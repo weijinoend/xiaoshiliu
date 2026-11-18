@@ -1,0 +1,183 @@
+import clsx from 'clsx'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useTranslate } from '../../i18n/index.js'
+import type { AvatarShape } from '../../services/settings.js'
+import { Button } from '../base/Button.js'
+import { Modal } from '../base/Modal.js'
+import styles from './Settings.module.css'
+
+const VIEWPORT_SIZE = 240
+const OUTPUT_SIZE = 256
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+/** 头像裁剪弹窗：支持拖拽平移与缩放滑块，输出 256×256 JPEG Data URL */
+export const AvatarCropModal = ({
+  file,
+  shape,
+  onClose,
+  onConfirm,
+}: {
+  file: File
+  shape: AvatarShape
+  onClose: () => void
+  onConfirm: (dataUrl: string) => void
+}) => {
+  const t = useTranslate()
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const dragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+  } | null>(null)
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    setImageUrl(url)
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setNaturalSize(null)
+    return () => {
+      URL.revokeObjectURL(url)
+    }
+  }, [file])
+
+  const baseScale = naturalSize ? VIEWPORT_SIZE / Math.min(naturalSize.w, naturalSize.h) : 1
+  const drawnW = naturalSize ? naturalSize.w * baseScale * zoom : VIEWPORT_SIZE
+  const drawnH = naturalSize ? naturalSize.h * baseScale * zoom : VIEWPORT_SIZE
+  const maxPanX = Math.max(0, (drawnW - VIEWPORT_SIZE) / 2)
+  const maxPanY = Math.max(0, (drawnH - VIEWPORT_SIZE) / 2)
+  const clampedX = clamp(pan.x, -maxPanX, maxPanX)
+  const clampedY = clamp(pan.y, -maxPanY, maxPanY)
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!naturalSize) {
+      return
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: clampedX,
+      originY: clampedY,
+    }
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return
+    }
+    setPan({
+      x: clamp(drag.originX + (event.clientX - drag.startX), -maxPanX, maxPanX),
+      y: clamp(drag.originY + (event.clientY - drag.startY), -maxPanY, maxPanY),
+    })
+  }
+
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      dragRef.current = null
+    }
+  }
+
+  const handleConfirm = () => {
+    const img = imgRef.current
+    if (!img || !naturalSize) {
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = OUTPUT_SIZE
+    canvas.height = OUTPUT_SIZE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      return
+    }
+    const ratio = OUTPUT_SIZE / VIEWPORT_SIZE
+    const dx = (VIEWPORT_SIZE / 2 + clampedX - drawnW / 2) * ratio
+    const dy = (VIEWPORT_SIZE / 2 + clampedY - drawnH / 2) * ratio
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+    ctx.drawImage(img, dx, dy, drawnW * ratio, drawnH * ratio)
+    onConfirm(canvas.toDataURL('image/jpeg', 0.9))
+  }
+
+  return (
+    <Modal
+      title={t('avatarCropTitle')}
+      closable
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="outlined" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button disabled={!naturalSize} onClick={handleConfirm}>
+            {t('avatarCropConfirm')}
+          </Button>
+        </>
+      }
+    >
+      <div className={styles.cropContainer}>
+        <div
+          className={styles.cropStage}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {imageUrl ? (
+            <img
+              ref={imgRef}
+              src={imageUrl}
+              alt=""
+              className={styles.cropImage}
+              style={{
+                width: `${drawnW}px`,
+                height: `${drawnH}px`,
+                transform: `translate3d(calc(-50% + ${clampedX}px), calc(-50% + ${clampedY}px), 0)`,
+              }}
+              onLoad={(event) => {
+                const target = event.currentTarget
+                setNaturalSize({
+                  w: target.naturalWidth || target.width,
+                  h: target.naturalHeight || target.height,
+                })
+              }}
+            />
+          ) : null}
+          <div
+            className={clsx(
+              styles.cropMask,
+              shape === 'circle' ? styles.cropMaskCircle : styles.cropMaskSquare
+            )}
+            aria-hidden
+          />
+        </div>
+        <div className={styles.cropControls}>
+          <span className={styles.cropHint}>{t('avatarCropHint')}</span>
+          <label className={styles.cropSliderRow}>
+            <span>{t('avatarCropZoom')}</span>
+            <input
+              type="range"
+              min={1}
+              max={4}
+              step={0.05}
+              value={zoom}
+              onChange={(event) => {
+                const nextZoom = Number(event.target.value)
+                setZoom(nextZoom)
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    </Modal>
+  )
+}

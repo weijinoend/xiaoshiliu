@@ -1,0 +1,11 @@
+{
+  "appId": "com.deepjeek.app",
+  "appName": "小石榴",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
