@@ -376,23 +376,25 @@ const UpdateSetting = () => {
           </div>
         }
       />
-      <SettingCell
-        label={t('updateAutoCheckLabel')}
-        description={t('updateAutoCheckDesc')}
-        status={null}
-        action={
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autoCheckUpdate}
-            aria-label={t('updateAutoCheckLabel')}
-            className={styles.switch}
-            onClick={() => setAutoCheckUpdate(!autoCheckUpdate)}
-          >
-            <span className={styles.switchThumb} />
-          </button>
-        }
-      />
+      {versionInfo.isAndroid ? null : (
+        <SettingCell
+          label={t('updateAutoCheckLabel')}
+          description={t('updateAutoCheckDesc')}
+          status={null}
+          action={
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoCheckUpdate}
+              aria-label={t('updateAutoCheckLabel')}
+              className={styles.switch}
+              onClick={() => setAutoCheckUpdate(!autoCheckUpdate)}
+            >
+              <span className={styles.switchThumb} />
+            </button>
+          }
+        />
+      )}
     </>
   )
 }

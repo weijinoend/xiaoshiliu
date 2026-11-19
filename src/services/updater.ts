@@ -244,6 +244,11 @@ const parseGitHubRelease = (raw: unknown): ReleaseInfo | null => {
 
 /** 从 GitHub Releases 检查最新版本并获取更新公告 */
 export const checkForUpdates = async ({ manual = false } = {}): Promise<void> => {
+  const current = getCurrentAppVersion()
+  // APK 由本仓库单独签名发布，不能也不应自动追随上游版本提示。
+  if (!manual && current.isAndroid) {
+    return
+  }
   if (useUpdater.getState().checking) {
     return
   }
@@ -280,7 +285,6 @@ export const checkForUpdates = async ({ manual = false } = {}): Promise<void> =>
       throw new Error('Invalid release payload')
     }
 
-    const current = getCurrentAppVersion()
     const hasUpdate = compareVersions(release.version, current.versionName) > 0
     const skipped = readSkippedVersion()
 

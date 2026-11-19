@@ -21,7 +21,7 @@ import { SettingsDialog } from '../components/settings/SettingsDialog.js'
 import { TokenLimitModal } from '../components/settings/TokenLimitModal.js'
 import { UpdateModal } from '../components/settings/UpdateModal.js'
 import { syncDailyTokenDate } from '../services/tokenUsage.js'
-import { checkForUpdates } from '../services/updater.js'
+import { checkForUpdates, getCurrentAppVersion } from '../services/updater.js'
 import { VoiceCallOverlay } from '../components/chatInput/VoiceCallOverlay.js'
 import { ImageViewer } from '../components/messages/ImageViewer.js'
 import { Toast } from '../components/base/Toast.js'
@@ -213,7 +213,7 @@ export const App = () => {
     syncDailyTokenDate()
     // 首次打开先在设置里输入 API Key
     ensureApiKey()
-    if (!useSettings.getState().autoCheckUpdate) {
+    if (getCurrentAppVersion().isAndroid || !useSettings.getState().autoCheckUpdate) {
       return
     }
     const timer = window.setTimeout(() => void checkForUpdates({ manual: false }), 2500)
