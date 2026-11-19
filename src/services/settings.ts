@@ -10,6 +10,7 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 export type Skin = 'ocean' | 'ink' | 'cloud'
 export type ReplyMode = 'default' | 'debate' | 'objective' | 'validate'
 export type AvatarShape = 'circle' | 'square'
+export type CrossChatMemoryScope = 'all' | 'selected'
 
 /** 主语言模型接口协议：deepseek / openai / responses / local（本地部署免密钥） */
 export type ChatProtocol = 'deepseek' | 'openai' | 'responses' | 'local'
@@ -126,6 +127,8 @@ export type Settings = {
   memoryUpdateNotice: boolean
   crossChatMemory: boolean
   crossChatMemoryLimit: number
+  crossChatMemoryScope: CrossChatMemoryScope
+  crossChatMemorySessionIds: string[]
   // 自定义关键词拒答（仅检查用户输入）
   refusalEnabled: boolean
   refusalKeywords: string
@@ -182,6 +185,8 @@ const KEYS = {
   memoryUpdateNotice: 'chat-demo:memory-update-notice',
   crossChatMemory: 'chat-demo:cross-chat-memory',
   crossChatMemoryLimit: 'chat-demo:cross-chat-memory-limit',
+  crossChatMemoryScope: 'chat-demo:cross-chat-memory-scope',
+  crossChatMemorySessionIds: 'chat-demo:cross-chat-memory-session-ids',
   refusalEnabled: 'chat-demo:refusal-enabled',
   refusalKeywords: 'chat-demo:refusal-keywords',
   refusalCaseSensitive: 'chat-demo:refusal-case-sensitive',
@@ -349,6 +354,17 @@ const initialChatProtocol = (): ChatProtocol => {
 const initialApiOrigin = read(KEYS.apiOrigin) ?? ''
 setRuntimeApiOrigin(initialApiOrigin)
 
+const readStringArray = (key: string): string[] => {
+  try {
+    const parsed: unknown = JSON.parse(read(key) ?? '[]')
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
   locale: initialLocale(),
@@ -398,6 +414,8 @@ export const useSettings = create<Settings>(() => ({
   memoryUpdateNotice: readBool(KEYS.memoryUpdateNotice, false),
   crossChatMemory: readBool(KEYS.crossChatMemory, true),
   crossChatMemoryLimit: Math.min(10, Math.max(1, readNumber(KEYS.crossChatMemoryLimit) ?? 4)),
+  crossChatMemoryScope: read(KEYS.crossChatMemoryScope) === 'selected' ? 'selected' : 'all',
+  crossChatMemorySessionIds: readStringArray(KEYS.crossChatMemorySessionIds),
   refusalEnabled: readBool(KEYS.refusalEnabled, false),
   refusalKeywords: read(KEYS.refusalKeywords) ?? '',
   refusalCaseSensitive: readBool(KEYS.refusalCaseSensitive, false),
@@ -622,6 +640,25 @@ export const setCrossChatMemoryLimit = (value: number) => {
   useSettings.setState({ crossChatMemoryLimit: limit })
 }
 
+export const setCrossChatMemoryScope = (crossChatMemoryScope: CrossChatMemoryScope) => {
+  write(KEYS.crossChatMemoryScope, crossChatMemoryScope)
+  useSettings.setState({ crossChatMemoryScope })
+}
+
+export const setCrossChatMemorySessionIds = (sessionIds: string[]) => {
+  const unique = [...new Set(sessionIds.filter(Boolean))]
+  write(KEYS.crossChatMemorySessionIds, unique.length > 0 ? JSON.stringify(unique) : null)
+  useSettings.setState({ crossChatMemorySessionIds: unique })
+}
+
+export const toggleCrossChatMemorySession = (sessionId: string) => {
+  const current = useSettings.getState().crossChatMemorySessionIds
+  const next = current.includes(sessionId)
+    ? current.filter((id) => id !== sessionId)
+    : [...current, sessionId]
+  setCrossChatMemorySessionIds(next)
+}
+
 export const setRefusalEnabled = (value: boolean) =>
   setBoolSetting(KEYS.refusalEnabled, 'refusalEnabled', value)
 
@@ -667,6 +704,8 @@ export const resetModelAndPolicySettings = () => {
   setThinkingEffort('low')
   setCrossChatMemory(true)
   setCrossChatMemoryLimit(4)
+  setCrossChatMemoryScope('all')
+  setCrossChatMemorySessionIds([])
   setRefusalEnabled(false)
   setRefusalKeywords('')
   setRefusalCaseSensitive(false)

@@ -368,8 +368,7 @@ export const en = {
   chatInputTakePhoto: 'Camera',
   chatInputPhotoLibrary: 'Photos',
   chatInputPickFiles: 'Files',
-  tokenUsageSummary:
-    '{total} tokens ({cached} in cached · {miss} in uncached · {output} out)',
+  tokenUsageSummary: '{total} tokens ({cached} in cached · {miss} in uncached · {output} out)',
   updateSectionLabel: 'Version & Updates',
   updateCurrentVersion: 'Current version: v{version} ({platform})',
   updateAutoCheckLabel: 'Check for updates on launch',
@@ -472,4 +471,13 @@ export const en = {
   searchSessionsEmpty: 'No matching chats or messages',
   searchSessionsScanning: 'Searching chat history…',
   searchResultTitleMatch: 'Matched chat title',
+  crossChatScopeLabel: 'Cross-chat memory scope',
+  crossChatScopeDesc:
+    'Recall from all chats automatically, or restrict memory sharing to picked chats',
+  crossChatScopeAll: 'All chats (Auto)',
+  crossChatScopeSelected: 'Picked chats (Multi-select)',
+  crossChatLinkedTitle: '{count} linked chats selected',
+  crossChatLinkedFilterPlaceholder: 'Filter chats by title…',
+  crossChatLinkedClear: 'Clear',
+  crossChatLinkedEmpty: 'No chats available',
 } satisfies Record<keyof typeof zh, string>

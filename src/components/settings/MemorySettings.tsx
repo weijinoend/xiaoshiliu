@@ -13,10 +13,15 @@ import {
   setAutoExtractMemory,
   setCrossChatMemory,
   setCrossChatMemoryLimit,
+  setCrossChatMemoryScope,
+  setCrossChatMemorySessionIds,
   setMemoryUpdateNotice,
   setSavedMemoryEnabled,
+  toggleCrossChatMemorySession,
   useSettings,
 } from '../../services/settings.js'
+import { useChatStore } from '../../services/chat/store.js'
+import { formatDate } from '../../utils/format.js'
 import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
 import { IconEditOutline16, IconTrashOutline16 } from '../base/icons.js'
@@ -27,8 +32,10 @@ import styles from './Settings.module.css'
 export const MemorySettings = () => {
   const t = useTranslate()
   const settings = useSettings()
+  const sessions = useChatStore((state) => state.sessions)
   const items = useSavedMemories((state) => state.items)
   const [newText, setNewText] = useState('')
+  const [sessionFilter, setSessionFilter] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
 
@@ -185,24 +192,127 @@ export const MemorySettings = () => {
       />
 
       {settings.crossChatMemory ? (
-        <div className={`${styles.cell} ${styles.row}`}>
-          <div className={styles.text}>
-            <div className={styles.label}>{t('modelSettingsCrossChatMemoryLimitLabel')}</div>
-            <div className={styles.description}>{t('modelSettingsCrossChatMemoryLimitDesc')}</div>
+        <>
+          <div className={`${styles.cell} ${styles.row}`}>
+            <div className={styles.text}>
+              <div className={styles.label}>{t('crossChatScopeLabel')}</div>
+              <div className={styles.description}>{t('crossChatScopeDesc')}</div>
+            </div>
+            <div className={styles.presetRow}>
+              <button
+                type="button"
+                className={clsx(
+                  styles.presetPill,
+                  settings.crossChatMemoryScope === 'all' && styles.presetPillActive
+                )}
+                onClick={() => setCrossChatMemoryScope('all')}
+              >
+                {t('crossChatScopeAll')}
+              </button>
+              <button
+                type="button"
+                className={clsx(
+                  styles.presetPill,
+                  settings.crossChatMemoryScope === 'selected' && styles.presetPillActive
+                )}
+                onClick={() => setCrossChatMemoryScope('selected')}
+              >
+                {t('crossChatScopeSelected')}
+              </button>
+            </div>
           </div>
-          <div style={{ width: 84 }}>
-            <NumberParamInput
-              label=""
-              value={settings.crossChatMemoryLimit}
-              placeholder="4"
-              step="1"
-              min={1}
-              max={10}
-              integer
-              onChange={(next) => setCrossChatMemoryLimit(next ?? 4)}
-            />
-          </div>
-        </div>
+
+          {settings.crossChatMemoryScope === 'selected' ? (
+            <div className={styles.cell}>
+              <div className={styles.field}>
+                <div className={styles.linkedHeaderRow}>
+                  <span className={styles.description}>
+                    {t('crossChatLinkedTitle', {
+                      count: settings.crossChatMemorySessionIds.filter((id) =>
+                        sessions.some((s) => s.id === id)
+                      ).length,
+                    })}
+                  </span>
+                  {settings.crossChatMemorySessionIds.length > 0 ? (
+                    <Button
+                      size="s"
+                      variant="outlined"
+                      onClick={() => setCrossChatMemorySessionIds([])}
+                    >
+                      {t('crossChatLinkedClear')}
+                    </Button>
+                  ) : null}
+                </div>
+                <input
+                  type="text"
+                  className={styles.textInput}
+                  placeholder={t('crossChatLinkedFilterPlaceholder')}
+                  value={sessionFilter}
+                  onChange={(event) => setSessionFilter(event.target.value)}
+                />
+                {sessions.length > 0 ? (
+                  <div className={styles.linkedSessionList}>
+                    {sessions
+                      .filter((session) => {
+                        const q = sessionFilter.trim().toLowerCase()
+                        if (!q) {
+                          return true
+                        }
+                        return (session.title || t('untitledChat')).toLowerCase().includes(q)
+                      })
+                      .map((session) => {
+                        const checked = settings.crossChatMemorySessionIds.includes(session.id)
+                        return (
+                          <label
+                            key={session.id}
+                            className={clsx(
+                              styles.linkedSessionItem,
+                              checked && styles.linkedSessionItemChecked
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleCrossChatMemorySession(session.id)}
+                            />
+                            <span className={styles.linkedSessionTitle}>
+                              {session.title || t('untitledChat')}
+                            </span>
+                            <span className={styles.linkedSessionDate}>
+                              {formatDate(new Date(session.updatedAt))}
+                            </span>
+                          </label>
+                        )
+                      })}
+                  </div>
+                ) : (
+                  <div className={styles.memoryEmpty}>{t('crossChatLinkedEmpty')}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className={`${styles.cell} ${styles.row}`}>
+              <div className={styles.text}>
+                <div className={styles.label}>{t('modelSettingsCrossChatMemoryLimitLabel')}</div>
+                <div className={styles.description}>
+                  {t('modelSettingsCrossChatMemoryLimitDesc')}
+                </div>
+              </div>
+              <div style={{ width: 84 }}>
+                <NumberParamInput
+                  label=""
+                  value={settings.crossChatMemoryLimit}
+                  placeholder="4"
+                  step="1"
+                  min={1}
+                  max={10}
+                  integer
+                  onChange={(next) => setCrossChatMemoryLimit(next ?? 4)}
+                />
+              </div>
+            </div>
+          )}
+        </>
       ) : null}
     </>
   )

@@ -208,10 +208,14 @@ const scoreTokenSet = (
   return score
 }
 
+const RECALL_INTENT_RE =
+  /之前|以前|上次|昨天|前几天|过往|历史|聊过|提过|说过|记得|回忆|remember|last time|previous|earlier/i
+
 /**
- * 检索除当前会话之外的历史会话，生成本轮用户消息里的跨对话记忆参考文本。
+ * 检索历史会话，生成本轮用户消息里的跨对话记忆参考文本。
  * 注意：这类每轮都会变化的内容不能放进 system，否则整段前缀 KV 缓存全部失效。
- * 采用「分词相关性（含 IDF 权重与标题加权）+ 近期会话摘要兜底」两路召回。
+ * - scope = 'all'：按词元相关性（含 IDF 权重）检索，仅在明确带有回忆意图或足够长的问题时才兜底近况，避免对「你好」「hi」无谓注入。
+ * - scope = 'selected'：仅在用户多选指定的互通会话范围内共享记忆。
  */
 export const buildCrossChatMemory = async ({
   currentSessionId,
@@ -220,6 +224,8 @@ export const buildCrossChatMemory = async ({
   sessionCache,
   maxSessions,
   allowRefused,
+  scope = 'all',
+  selectedSessionIds = [],
   signal,
 }: {
   currentSessionId: string
@@ -228,6 +234,8 @@ export const buildCrossChatMemory = async ({
   sessionCache: Record<string, Session>
   maxSessions: number
   allowRefused: boolean
+  scope?: 'all' | 'selected'
+  selectedSessionIds?: string[]
   signal?: AbortSignal
 }): Promise<string> => {
   const activeIds = new Set(sessions.map((item) => item.id))
@@ -237,7 +245,10 @@ export const buildCrossChatMemory = async ({
     }
   }
 
-  const candidates = sessions.filter((item) => item.id !== currentSessionId)
+  const selectedFilter = scope === 'selected' ? new Set(selectedSessionIds) : null
+  const candidates = sessions.filter(
+    (item) => item.id !== currentSessionId && (!selectedFilter || selectedFilter.has(item.id))
+  )
   if (candidates.length === 0 || maxSessions <= 0) {
     return ''
   }
@@ -325,17 +336,22 @@ export const buildCrossChatMemory = async ({
   const selected: IndexedSession[] = []
   const selectedIds = new Set<string>()
 
+  const effectiveLimit =
+    scope === 'selected' ? Math.max(maxSessions, candidates.length) : maxSessions
   for (const item of ranked) {
-    if (selected.length >= maxSessions || item.relevance <= 0) {
+    if (selected.length >= effectiveLimit || item.relevance <= 0) {
       break
     }
     selected.push(item.doc)
     selectedIds.add(item.doc.id)
   }
 
-  // 提问较泛未精确命中关键词时，补充最近活跃会话的最新轮次作为近期上下文参考。
-  const recentLimit = Math.min(maxSessions, RECENT_FALLBACK_LIMIT)
-  if (selected.length < recentLimit) {
+  // 指定互通模式下，选中的历史会话始终纳入共享；全部模式下，仅在明确带回忆意图或实词较多时才兜底近期会话，避免对「hi」「你好」无效召回。
+  const allowRecentFallback =
+    scope === 'selected' || RECALL_INTENT_RE.test(query) || queryTokens.size >= 4
+  const recentLimit =
+    scope === 'selected' ? effectiveLimit : Math.min(maxSessions, RECENT_FALLBACK_LIMIT)
+  if (allowRecentFallback && selected.length < recentLimit) {
     const byRecent = [...docs].sort((a, b) => b.updatedAt - a.updatedAt)
     for (const doc of byRecent) {
       if (selected.length >= recentLimit) {

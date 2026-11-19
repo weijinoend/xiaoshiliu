@@ -1809,6 +1809,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
               sessionCache: get().sessionCache,
               maxSessions: settings.crossChatMemoryLimit,
               allowRefused: settings.allowRefusedContext,
+              scope: settings.crossChatMemoryScope,
+              selectedSessionIds: settings.crossChatMemorySessionIds,
               signal: controller.signal,
             })
           : ''
@@ -1819,7 +1821,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         // 缓存铁律：system 和已保存的历史轮次必须逐字节稳定。
         // system 位于请求最前面，只要它变化一个字符，服务端前缀 KV 缓存（prompt cache）
         // 就会从第一个 token 起全部失效，整段历史都要按未命中价重算。
-        // 因此每轮会变的上下文（回复模式、语音通话、长期记忆、跨对话检索、实时画面提示）
+        // 因此所有会话内动态/模式化上下文（回复模式、语音通话、实时画面、长期记忆、跨对话检索）
         // 一律前置到本轮用户消息，只让「最后一条消息」不可缓存，system 与历史全部命中缓存。
         const turnContext = [
           replyModeInstruction ? `<reply_mode>\n${replyModeInstruction}\n</reply_mode>` : '',

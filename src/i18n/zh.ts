@@ -445,4 +445,12 @@ export const zh = {
   searchSessionsEmpty: '未找到匹配的对话记录',
   searchSessionsScanning: '正在检索历史对话…',
   searchResultTitleMatch: '会话标题匹配',
+  crossChatScopeLabel: '跨对话记忆范围',
+  crossChatScopeDesc: '选择全库自动检索，或指定若干会话互相共享记忆',
+  crossChatScopeAll: '全部对话（自动检索）',
+  crossChatScopeSelected: '指定会话互通（多选）',
+  crossChatLinkedTitle: '已选择 {count} 个互通会话',
+  crossChatLinkedFilterPlaceholder: '按标题筛选会话…',
+  crossChatLinkedClear: '清空已选',
+  crossChatLinkedEmpty: '暂无可选会话',
 } as const
