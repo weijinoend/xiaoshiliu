@@ -127,7 +127,7 @@ export const clearSavedMemories = () => {
   commit([])
 }
 
-/** 格式化已启用的长期记忆条目，注入请求 system */
+/** 格式化已启用的长期记忆条目，注入本轮用户消息（不放 system，避免前缀缓存失效） */
 export const formatSavedMemories = (): string => {
   const enabled = useSavedMemories
     .getState()

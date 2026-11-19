@@ -347,7 +347,8 @@ export const zh = {
   chatInputTakePhoto: '拍照',
   chatInputPhotoLibrary: '相册',
   chatInputPickFiles: '文件',
-  tokenUsageSummary: '本次消耗 {total} tokens（输入 {input} · 输出 {output}）',
+  tokenUsageSummary:
+    '本次消耗 {total} tokens（缓存命中输入 {cached} · 未命中输入 {miss} · 输出 {output}）',
   updateSectionLabel: '版本与更新',
   updateCurrentVersion: '当前版本：v{version}（{platform}）',
   updateAutoCheckLabel: '启动时自动检查更新',
