@@ -294,6 +294,15 @@
   word-break: break-word;
 }
 
+.imageGenGifNotice {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--dsw-specific-selector);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .imageGenPromptInput {
   box-sizing: border-box;
   width: 100%;

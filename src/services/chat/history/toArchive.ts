@@ -13,8 +13,8 @@ import type {
   SessionIndexEntry,
 } from './format.js'
 
-/** 返回图片原件在 ZIP 里的条目名；无原件或非图片附件返回 null，仅导出元数据。 */
-export type ExportImage = (file: { id: string; name: string; isImage: boolean }) => string | null
+/** 返回附件原件在 ZIP 里的条目名；本地无原件时返回 null，仅导出元数据。 */
+export type ExportFile = (file: { id: string; name: string; isImage: boolean }) => string | null
 
 const iso = (ms: number) => new Date(ms).toISOString()
 
@@ -24,7 +24,7 @@ const isoOrNull = (value: string | null) => {
   return Number.isFinite(ms) ? iso(ms) : null
 }
 
-const userFragments = (message: UserMessage, exportImage: ExportImage): Fragment[] => {
+const userFragments = (message: UserMessage, exportFile: ExportFile): Fragment[] => {
   const files = message.files.map((file): FileEntry => {
     const isImage = file.isImage
     return {
@@ -33,7 +33,7 @@ const userFragments = (message: UserMessage, exportImage: ExportImage): Fragment
       file_size: file.size,
       token_usage: null,
       inserted_at: iso(message.createdAt),
-      export_path: exportImage({ id: file.id, name: file.name, isImage }),
+      export_path: exportFile({ id: file.id, name: file.name, isImage }),
       is_image: isImage,
       width: null,
       height: null,
@@ -122,7 +122,7 @@ const toolFragment = (tool: ServerToolUseBlock, result: ReplyBlock | undefined):
  * 引用改由正文外的来源表示，不写入标记；
  * 本轮调用过联网能力时，剥除模型原样输出的 [citation:N]。
  */
-const assistantFragments = (message: AssistantMessage, exportImage: ExportImage): Fragment[] => {
+const assistantFragments = (message: AssistantMessage, exportFile: ExportFile): Fragment[] => {
   const { blocks } = message
   const results = new Map<string, ReplyBlock>()
   for (const block of blocks) {
@@ -164,7 +164,7 @@ const assistantFragments = (message: AssistantMessage, exportImage: ExportImage)
               {
                 type: 'GENERATED_IMAGE',
                 id: block.fileId,
-                export_path: exportImage({
+                export_path: exportFile({
                   id: block.fileId,
                   name: `generated.${imageExt}`,
                   isImage: true,
@@ -247,7 +247,7 @@ const numberMessages = (messages: Message[]) => {
   return { ordered, ids }
 }
 
-export const toSessionFile = (original: Session, exportImage: ExportImage): SessionFile => {
+export const toSessionFile = (original: Session, exportFile: ExportFile): SessionFile => {
   const session = normalizeSession(original)
   const { ordered, ids } = numberMessages(session.messages)
   const id = (message: Message) => ids.get(message.id) ?? fail('backupInvalidBranches')
@@ -274,8 +274,8 @@ export const toSessionFile = (original: Session, exportImage: ExportImage): Sess
       inserted_at: iso(message.createdAt),
       fragments:
         message.role === 'user'
-          ? userFragments(message, exportImage)
-          : assistantFragments(message, exportImage),
+          ? userFragments(message, exportFile)
+          : assistantFragments(message, exportFile),
     }
   })
   const current = getVisibleMessages(session).at(-1)

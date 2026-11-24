@@ -7,8 +7,8 @@ android {
         applicationId "com.deepjeek.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode(project.hasProperty('deepjeekVersionCode') ? project.property('deepjeekVersionCode').toString().toInteger() : 10008)
-        versionName(project.hasProperty('deepjeekVersionName') ? project.property('deepjeekVersionName').toString() : '1.1.4')
+        versionCode(project.hasProperty('deepjeekVersionCode') ? project.property('deepjeekVersionCode').toString().toInteger() : 10009)
+        versionName(project.hasProperty('deepjeekVersionName') ? project.property('deepjeekVersionName').toString() : '1.1.5')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

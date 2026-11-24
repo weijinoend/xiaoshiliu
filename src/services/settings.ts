@@ -43,6 +43,7 @@ export type ImageGenChannelConfig = {
   outputFormat: ImageOutputFormat
   gifFrameCount: number
   gifFrameDurationMs: number
+  count: number
   customHeaders: string
   requireConfirm: boolean
 }
@@ -69,6 +70,7 @@ const DEFAULT_IMAGE_GEN_CHANNEL: ImageGenChannelConfig = {
   outputFormat: 'auto',
   gifFrameCount: 9,
   gifFrameDurationMs: 200,
+  count: 1,
   customHeaders: '',
   requireConfirm: true,
 }
@@ -356,6 +358,10 @@ const readImageGenChannel = (key: string): ImageGenChannelConfig => {
         typeof obj.gifFrameDurationMs === 'number' && Number.isFinite(obj.gifFrameDurationMs)
           ? Math.min(2000, Math.max(20, Math.round(obj.gifFrameDurationMs)))
           : DEFAULT_IMAGE_GEN_CHANNEL.gifFrameDurationMs,
+      count:
+        typeof obj.count === 'number' && Number.isFinite(obj.count)
+          ? Math.min(4, Math.max(1, Math.round(obj.count)))
+          : DEFAULT_IMAGE_GEN_CHANNEL.count,
       customHeaders: typeof obj.customHeaders === 'string' ? obj.customHeaders : '',
       requireConfirm: obj.requireConfirm !== false,
     }

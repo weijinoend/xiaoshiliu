@@ -863,6 +863,7 @@ const generateViaImages = async ({
   normalizedSize,
   customHeadersRaw,
   referenceImages,
+  count = 1,
   outputFormat,
   gifFrameCount,
   gifFrameDurationMs,
@@ -875,17 +876,19 @@ const generateViaImages = async ({
   normalizedSize?: string
   customHeadersRaw: string
   referenceImages: ReferenceImageInput[]
+  count?: number
   outputFormat?: ImageOutputOptions['outputFormat']
   gifFrameCount?: number
   gifFrameDurationMs?: number
   signal?: AbortSignal
-}): Promise<GeneratedImageResult> => {
+}): Promise<GeneratedImageResult[]> => {
   let response: Response
   if (referenceImages.length > 0) {
     const url = joinApiPath(baseUrl, '/images/edits')
     const form = new FormData()
     form.append('model', model)
     form.append('prompt', prompt)
+    form.append('n', String(Math.max(1, Math.min(4, count))))
     if (normalizedSize) {
       form.append('size', normalizedSize)
     }
@@ -917,7 +920,7 @@ const generateViaImages = async ({
       body: JSON.stringify({
         model,
         prompt,
-        n: 1,
+        n: Math.max(1, Math.min(4, count)),
         ...(normalizedSize ? { size: normalizedSize } : {}),
         ...(outputFormat && outputFormat !== 'auto' ? { output_format: outputFormat } : {}),
         ...(outputFormat === 'gif'
@@ -935,19 +938,32 @@ const generateViaImages = async ({
     throw new ApiError('protocol', 'Invalid image generation response')
   }
   const data = (json as { data?: unknown }).data
-  const item = Array.isArray(data) ? (data[0] as Record<string, unknown> | undefined) : undefined
-  if (!item) {
+  const items = Array.isArray(data) ? data : []
+  if (items.length === 0) {
     throw new ApiError('protocol', 'No image returned')
   }
-  const revisedPrompt = typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined
-
-  if (typeof item.b64_json === 'string' && item.b64_json) {
-    return imageFromStringOrUrl(item.b64_json, revisedPrompt, signal)
+  const results = await Promise.all(
+    items.map(async (rawItem) => {
+      if (typeof rawItem !== 'object' || rawItem === null) {
+        return null
+      }
+      const item = rawItem as Record<string, unknown>
+      const revisedPrompt =
+        typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined
+      if (typeof item.b64_json === 'string' && item.b64_json) {
+        return imageFromStringOrUrl(item.b64_json, revisedPrompt, signal)
+      }
+      if (typeof item.url === 'string' && item.url) {
+        return imageFromStringOrUrl(item.url, revisedPrompt, signal)
+      }
+      return null
+    })
+  )
+  const valid = results.filter((result): result is GeneratedImageResult => result !== null)
+  if (valid.length === 0) {
+    throw new ApiError('protocol', 'Unsupported image response format')
   }
-  if (typeof item.url === 'string' && item.url) {
-    return imageFromStringOrUrl(item.url, revisedPrompt, signal)
-  }
-  throw new ApiError('protocol', 'Unsupported image response format')
+  return valid
 }
 
 const shouldFallbackProtocol = (error: unknown): boolean =>
@@ -973,6 +989,7 @@ export const generateImage = async ({
   preferResponses = false,
   customHeadersRaw = '',
   referenceImages = [],
+  count = 1,
   outputFormat = 'auto',
   gifFrameCount,
   gifFrameDurationMs,
@@ -987,11 +1004,12 @@ export const generateImage = async ({
   preferResponses?: boolean
   customHeadersRaw?: string
   referenceImages?: ReferenceImageInput[]
+  count?: number
   outputFormat?: ImageOutputOptions['outputFormat']
   gifFrameCount?: number
   gifFrameDurationMs?: number
   signal?: AbortSignal
-}): Promise<GeneratedImageResult> => {
+}): Promise<GeneratedImageResult[]> => {
   const normalizedSize =
     size && size.trim() && size.trim().toLowerCase() !== 'auto' ? size.trim() : undefined
   const params = {
@@ -1002,29 +1020,38 @@ export const generateImage = async ({
     normalizedSize,
     customHeadersRaw,
     referenceImages,
+    count: Math.max(1, Math.min(4, count)),
     outputFormat,
     gifFrameCount,
     gifFrameDurationMs,
     signal,
   }
-  if (outputFormat === 'gif') {
+  if (outputFormat === 'gif' || count > 1) {
     // 2.6 animated GIF output is only available through the non-streaming Images API.
     return generateViaImages(params)
   }
   if (protocol === 'responses') {
-    return generateViaResponses(params)
+    return [await generateViaResponses(params)]
   }
   if (protocol === 'images') {
     return generateViaImages(params)
   }
-  const primary = preferResponses ? generateViaResponses : generateViaImages
-  const fallback = preferResponses ? generateViaImages : generateViaResponses
+  if (preferResponses) {
+    try {
+      return [await generateViaResponses(params)]
+    } catch (error) {
+      if (signal?.aborted || !shouldFallbackProtocol(error)) {
+        throw error
+      }
+      return generateViaImages(params)
+    }
+  }
   try {
-    return await primary(params)
+    return await generateViaImages(params)
   } catch (error) {
     if (signal?.aborted || !shouldFallbackProtocol(error)) {
       throw error
     }
-    return fallback(params)
+    return [await generateViaResponses(params)]
   }
 }

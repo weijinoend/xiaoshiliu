@@ -126,6 +126,9 @@ export const GeneratedImage = ({
           ) : null}
         </div>
         {isError && block.error ? <div className={styles.imageGenError}>{block.error}</div> : null}
+        {!isError && block.mimeType.includes('gif') && hasReference ? (
+          <div className={styles.imageGenGifNotice}>{t('imageGenGifReferenceNotice')}</div>
+        ) : null}
         <textarea
           className={styles.imageGenPromptInput}
           rows={2}

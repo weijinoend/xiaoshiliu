@@ -25,6 +25,7 @@ declare const styles: {
   readonly imageGenHeader: string
   readonly imageGenSizeBadge: string
   readonly imageGenPromptText: string
+  readonly imageGenGifNotice: string
   readonly imageGenPromptInput: string
   readonly imageGenError: string
   readonly imageGenConfirmActions: string

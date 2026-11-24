@@ -313,6 +313,24 @@ export const ImageGenChannelCard = ({
             </select>
             <span className={styles.description}>{t('imageGenOutputFormatDesc')}</span>
           </label>
+          <label className={styles.paramItem}>
+            <span className={styles.paramLabel}>{t('imageGenCountLabel')}</span>
+            <input
+              type="number"
+              className={styles.textInput}
+              min={1}
+              max={4}
+              step={1}
+              value={channel.count}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value, 10)
+                if (Number.isFinite(value)) {
+                  onChange({ ...channel, count: Math.min(4, Math.max(1, value)) })
+                }
+              }}
+            />
+            <span className={styles.description}>{t('imageGenCountDesc')}</span>
+          </label>
           {channel.outputFormat === 'gif' ? (
             <>
               <div className={styles.paramGrid}>

@@ -1,4 +1,4 @@
-/** ZIP 条目名。条目顺序固定：manifest → user（可能缺失）→ 全部会话 JSON → index → 全部图片。 */
+/** ZIP 条目名。条目顺序固定：manifest → user（可能缺失）→ 全部会话 JSON → index → 全部附件。 */
 
 export const MANIFEST_PATH = 'manifest.json'
 export const USER_PATH = 'user.json'
@@ -6,7 +6,7 @@ export const INDEX_PATH = 'chat_session_index.json'
 
 export const sessionPath = (sessionId: string) => `chat_sessions/${sessionId}.json`
 
-/** 会话自己的图片目录，带结尾斜杠 */
+/** 会话自己的附件目录，带结尾斜杠 */
 export const sessionFilesDir = (sessionId: string) => `chat_sessions/${sessionId}_files/`
 
 /** 会话 JSON 条目对应的会话 ID；其他条目返回 null */

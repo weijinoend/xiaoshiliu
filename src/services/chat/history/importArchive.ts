@@ -116,10 +116,10 @@ export const importArchive = async (
     fail('backupUnrecognized')
   }
   const imported = new Set<string>()
-  const images = new Map<string, string>()
-  /** 已保存的原件：文件 ID → MIME。同一图片出现在多个会话目录时只保存一次。 */
+  const attachments = new Map<string, string>()
+  /** 已保存的原件：文件 ID → MIME。同一附件出现在多个会话目录时只保存一次。 */
   const stored = new Map<string, string>()
-  /** 重打包归档中若图片条目先于对应会话 JSON 出现，暂存等待会话解析后立刻关联。 */
+  /** 重打包归档中若附件条目先于对应会话 JSON 出现，暂存等待会话解析后立刻关联。 */
   const deferredImages = new Map<string, Blob>()
   let deferredBytes = 0
   let manifest = false
@@ -197,11 +197,11 @@ export const importArchive = async (
           fail('backupIncomplete')
         }
         imported.add(sessionId)
-        for (const [imagePath, id] of local.images) {
-          images.set(imagePath, id)
-          const pending = deferredImages.get(imagePath)
+        for (const [filePath, id] of local.files) {
+          attachments.set(filePath, id)
+          const pending = deferredImages.get(filePath)
           if (pending) {
-            deferredImages.delete(imagePath)
+            deferredImages.delete(filePath)
             deferredBytes -= pending.size
             await saveImageBlob(pending, id)
           }
@@ -214,7 +214,7 @@ export const importArchive = async (
       } else if (path === INDEX_PATH && !index) {
         index = readSessionIndex(await readJson(entry))
       } else if (fileDirMatch) {
-        const id = images.get(path)
+        const id = attachments.get(path)
         if (id !== undefined) {
           await saveImage(entry, id)
         } else if (!imported.has(fileDirMatch[1]) && deferredBytes + entry.size <= DEFERRED_IMAGE_MAX_BYTES) {

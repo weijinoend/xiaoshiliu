@@ -18,8 +18,8 @@ import { sessionFilesDir } from './paths.js'
 
 export type LocalSession = {
   session: Session
-  /** 本会话目录下应存在的图片：ZIP 条目名 → 文件 ID */
-  images: Map<string, string>
+  /** 本会话目录下应存在的附件：ZIP 条目名 → 文件 ID */
+  files: Map<string, string>
 }
 
 const time = (value: string) => Date.parse(value)
@@ -308,35 +308,32 @@ export const toLocalSession = (file: SessionFile): LocalSession => {
     ...(file.pinned ? { pinnedAt: updatedAt || Date.now() } : {}),
     ...buildTree(file),
   }
-  const images = new Map<string, string>()
-  const registerImagePath = (rawPath: string | null | undefined, id: string) => {
+  const files = new Map<string, string>()
+  const registerFilePath = (rawPath: string | null | undefined, id: string) => {
     // 读取端把条目名规范为 NFC，引用也按同样规则比较。
     const path = rawPath?.normalize('NFC')
     if (path === undefined) {
       return
     }
-    // 图片只能在本会话目录下，同一条目不能对应不同文件。
-    if (!path.startsWith(sessionFilesDir(file.id)) || (images.get(path) ?? id) !== id) {
+    // 附件只能在本会话目录下，同一条目不能对应不同文件。
+    if (!path.startsWith(sessionFilesDir(file.id)) || (files.get(path) ?? id) !== id) {
       fail('backupInvalidFiles')
     }
-    images.set(path, id)
+    files.set(path, id)
   }
   for (const message of file.messages) {
     for (const item of message.fragments) {
       if (item.type === 'GENERATED_IMAGE') {
-        registerImagePath(item.export_path, item.id)
+        registerFilePath(item.export_path, item.id)
         continue
       }
       if (item.type !== 'FILE') {
         continue
       }
       for (const entry of item.files) {
-        if (!entry.is_image) {
-          continue
-        }
-        registerImagePath(entry.export_path, entry.id)
+        registerFilePath(entry.export_path, entry.id)
       }
     }
   }
-  return { session, images }
+  return { session, files }
 }

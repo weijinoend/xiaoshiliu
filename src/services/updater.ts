@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { showToast } from '../components/base/toastState.js'
 import { fetchWithDevProxy, sanitizeWebUrl } from './api/origin.js'
 
-export const GITHUB_REPO = 'YanJiuWeiYuanHui/DeepChat'
+export const GITHUB_REPO = 'weijinoend/xiaoshiliu'
 export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}`
 export const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases`
 const LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
@@ -373,11 +373,22 @@ export const startUpdateInstall = () => {
   if (!latest) {
     return
   }
-  // DeepJeek uses its own package and signing key, so upstream APKs cannot
-  // replace it in place. Keep upstream release notifications, but open the
-  // release page for a separately rebuilt DeepJeek package.
   writeSkippedVersion('')
-  openReleaseInBrowser(latest.apkUrl ?? latest.htmlUrl)
+  const apkUrl = isAllowedApkUrl(latest.apkUrl)
+  const bridge = getAndroidBridge()
+  if (getCurrentAppVersion().isAndroid && apkUrl && bridge?.downloadAndInstallApk) {
+    useUpdater.setState({
+      download: {
+        ...EMPTY_DOWNLOAD,
+        status: 'downloading',
+      },
+    })
+    bridge.downloadAndInstallApk(apkUrl, latest.apkName ?? 'XiaoShiLiu-update.apk')
+    window.setTimeout(syncAndroidDownloadState, 100)
+    pollTimer = window.setInterval(syncAndroidDownloadState, 250)
+    return
+  }
+  openReleaseInBrowser(apkUrl ?? latest.htmlUrl)
 }
 
 export const retryPendingAndroidInstall = () => {

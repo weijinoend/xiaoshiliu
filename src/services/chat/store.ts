@@ -21,7 +21,12 @@ import {
   parseMessageErrorLocation,
 } from '../api/errors.js'
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
-import { matchesRefusalKeyword, setImageGen, useSettings } from '../settings.js'
+import {
+  matchesRefusalKeyword,
+  setImageGen,
+  setImageGenChannel,
+  useSettings,
+} from '../settings.js'
 import { getReplyModeInstruction } from '../replyModes.js'
 import { toggleReadAloud } from '../speech/readAloud.js'
 import { recordTurnTokenUsage } from '../tokenUsage.js'
@@ -1502,20 +1507,22 @@ const resolveSizeFromReference = async (blob: Blob): Promise<string | undefined>
   return '1024x1792'
 }
 
-const saveAndCreateImageBlock = async (
-  prompt: string,
-  signal: AbortSignal,
-  sessionId?: string,
-  sourceFileIds: string[] = [],
-  sizeOverride?: string
-): Promise<{
+type StoredGeneratedImage = {
   fileId: string
   mimeType: string
   revisedPrompt?: string
   resolvedSize?: string
   gifFrameCount?: number
   gifFrameDurationMs?: number
-}> => {
+}
+
+const saveAndCreateImageBlocks = async (
+  prompt: string,
+  signal: AbortSignal,
+  sessionId?: string,
+  sourceFileIds: string[] = [],
+  sizeOverride?: string
+): Promise<StoredGeneratedImage[]> => {
   const settings = useSettings.getState()
   const { imageGenChannel } = settings
   const baseUrl = imageGenChannel.baseUrl.trim() || getApiOrigin()
@@ -1571,6 +1578,7 @@ const saveAndCreateImageBlock = async (
     preferResponses: settings.chatProtocol === 'responses',
     customHeadersRaw: imageGenChannel.customHeaders.trim() || settings.customHeaders,
     referenceImages,
+    count: imageGenChannel.count,
     outputFormat: imageGenChannel.outputFormat,
     gifFrameCount: imageGenChannel.gifFrameCount,
     gifFrameDurationMs: imageGenChannel.gifFrameDurationMs,
@@ -1580,12 +1588,15 @@ const saveAndCreateImageBlock = async (
   if (sessionId && (deletingSessions.has(sessionId) || !getSession(sessionId))) {
     throw new DOMException('Aborted', 'AbortError')
   }
-  const fileId = createId()
-  await db.saveFiles([{ id: fileId, blob: generated.blob }])
-  return {
-    fileId,
-    mimeType: generated.mimeType,
-    revisedPrompt: generated.revisedPrompt,
+  const stored = generated.map((image) => ({
+    ...image,
+    fileId: createId(),
+  }))
+  await db.saveFiles(stored.map((image) => ({ id: image.fileId, blob: image.blob })))
+  return stored.map((image) => ({
+    fileId: image.fileId,
+    mimeType: image.mimeType,
+    revisedPrompt: image.revisedPrompt,
     resolvedSize: targetSize || undefined,
     ...(isGif
       ? {
@@ -1593,7 +1604,7 @@ const saveAndCreateImageBlock = async (
           gifFrameDurationMs: imageGenChannel.gifFrameDurationMs,
         }
       : {}),
-  }
+  }))
 }
 
 const updateImageBlockAt = (
@@ -1620,6 +1631,31 @@ const updateImageBlockAt = (
     }),
   }))
 }
+
+const doneImageBlocks = (
+  results: StoredGeneratedImage[],
+  prompt: string,
+  size: string,
+  sourceFileIds: string[]
+) =>
+  results.map(
+    (result) =>
+      ({
+        type: 'image',
+        fileId: result.fileId,
+        mimeType: result.mimeType,
+        prompt,
+        size: result.resolvedSize ?? size,
+        ...(result.gifFrameCount
+          ? {
+              gifFrameCount: result.gifFrameCount,
+              gifFrameDurationMs: result.gifFrameDurationMs,
+            }
+          : {}),
+        ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
+        status: 'done',
+      }) as Extract<AssistantMessage['blocks'][number], { type: 'image' }>
+  )
 
 /** 确认（或重试）一条待确认的生图块 */
 export const confirmImageGeneration = async (
@@ -1660,27 +1696,27 @@ export const confirmImageGeneration = async (
   persist(sessionId)
 
   try {
-    const result = await saveAndCreateImageBlock(
+    const results = await saveAndCreateImageBlocks(
       prompt,
       controller.signal,
       sessionId,
       block.sourceFileIds ?? [],
       chosenSize
     )
-    updateImageBlockAt(sessionId, messageId, blockIndex, (item) => ({
-      type: 'image',
-      fileId: result.fileId,
-      mimeType: result.mimeType,
-      prompt,
-      size: result.resolvedSize ?? chosenSize,
-      ...(result.gifFrameCount
-        ? {
-            gifFrameCount: result.gifFrameCount,
-            gifFrameDurationMs: result.gifFrameDurationMs,
-          }
-        : {}),
-      ...(item.sourceFileIds?.length ? { sourceFileIds: item.sourceFileIds } : {}),
-      status: 'done',
+    updateSession(sessionId, (session) => ({
+      ...session,
+      messages: session.messages.map((message) => {
+        if (message.id !== messageId || message.role !== 'assistant') {
+          return message
+        }
+        const blocks = [...message.blocks]
+        blocks.splice(
+          blockIndex,
+          1,
+          ...doneImageBlocks(results, prompt, chosenSize, block.sourceFileIds ?? [])
+        )
+        return { ...message, blocks }
+      }),
     }))
   } catch (error) {
     if (controller.signal.aborted) {
@@ -1733,6 +1769,10 @@ export const reuseGeneratedImageInDraft = async (
   const file = new File([blob], `reference-${fileId.slice(0, 8)}.${ext}`, {
     type: mimeType || 'image/png',
   })
+  if (mimeType.includes('gif')) {
+    const channel = useSettings.getState().imageGenChannel
+    setImageGenChannel({ ...channel, outputFormat: 'gif', size: 'auto' })
+  }
   setImageGen(true)
   addDraftFiles(sessionId, [file], useSettings.getState().apiKey ?? '')
   return true
@@ -1783,34 +1823,23 @@ const runImageGeneration = async (
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
   let reply = initial
   try {
-    const result = await saveAndCreateImageBlock(
+    const results = await saveAndCreateImageBlocks(
       prompt,
       controller.signal,
       sessionId,
       sourceFileIds,
       initialSize
     )
+    const revisedPrompts = [
+      ...new Set(results.map((result) => result.revisedPrompt).filter(Boolean)),
+    ] as string[]
     reply = {
       ...reply,
       status: 'done',
       stopReason: 'end_turn',
       blocks: [
-        {
-          type: 'image',
-          fileId: result.fileId,
-          mimeType: result.mimeType,
-          prompt,
-          size: result.resolvedSize ?? initialSize,
-          ...(result.gifFrameCount
-            ? {
-                gifFrameCount: result.gifFrameCount,
-                gifFrameDurationMs: result.gifFrameDurationMs,
-              }
-            : {}),
-          ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
-          status: 'done',
-        },
-        ...(result.revisedPrompt ? [{ type: 'text' as const, text: result.revisedPrompt }] : []),
+        ...doneImageBlocks(results, prompt, initialSize, sourceFileIds),
+        ...revisedPrompts.map((text) => ({ type: 'text' as const, text })),
       ],
     }
   } catch (error) {
@@ -2121,7 +2150,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             } else {
               updateReply(sessionId, reply)
               try {
-                const generated = await saveAndCreateImageBlock(
+                const generated = await saveAndCreateImageBlocks(
                   imgPrompt,
                   controller.signal,
                   sessionId,
@@ -2132,21 +2161,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
                   ...reply,
                   blocks: [
                     ...reply.blocks,
-                    {
-                      type: 'image',
-                      fileId: generated.fileId,
-                      mimeType: generated.mimeType,
-                      prompt: imgPrompt,
-                      size: generated.resolvedSize ?? initialSize,
-                      ...(generated.gifFrameCount
-                        ? {
-                            gifFrameCount: generated.gifFrameCount,
-                            gifFrameDurationMs: generated.gifFrameDurationMs,
-                          }
-                        : {}),
-                      ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
-                      status: 'done',
-                    },
+                    ...doneImageBlocks(generated, imgPrompt, initialSize, sourceFileIds),
                   ],
                 }
               } catch (imgError) {

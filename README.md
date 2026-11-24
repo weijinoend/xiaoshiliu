@@ -10,11 +10,11 @@ package identity, and release signing.
 ## Features
 
 - **Multi-Protocol & Local Deployment**: Native API, OpenAI Chat Completions, OpenAI Responses API, and keyless local server presets (Ollama, LM Studio, vLLM, LocalAI) with automatic model discovery.
-- **Independent Multi-Modal Channels**: Separate provider endpoints/keys/models for ASR, TTS, Vision, OCR, and Image Generation (text-to-image & image-to-image with aspect-ratio matching and optional pre-generation confirmation).
+- **Independent Multi-Modal Channels**: Separate provider endpoints/keys/models for ASR, TTS, Vision, OCR, and Image Generation (1–4 images, GPT Image 2.6 animated GIF, aspect-ratio matching, and optional pre-generation confirmation).
 - **Voice Call & Camera Switching**: Continuous voice call overlay with live camera preview and mobile front/back camera switch, plus a header speaker toggle for automatic voice readout of replies.
 - **Long-Term Memory & Policies**: Auto-extracted and editable long-term saved memories, configurable cross-chat memory recall, assistant reply branching edits, and custom keyword refusal rules.
 - **Token Usage & Daily Threshold Alerts**: Displays per-turn token usage beneath assistant replies and tracks daily cumulative usage with a customizable threshold alert modal.
-- **Chat History Backup**: Full ZIP import/export compatible with `export_format_version: 3` archives.
+- **Chat History Backup**: Full ZIP import/export compatible with `export_format_version: 3` archives, including every locally available attachment.
 - **In-App Update Checker**: Checks GitHub Releases for new versions, renders the release changelog inside the app, and lets users choose to install, stay on their current version, or skip a release.
 
 ## Development & Hosting

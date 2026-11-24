@@ -14,7 +14,7 @@ export const EXPORT_FORMAT_VERSION = 3
 /** manifest.json，ZIP 的第一个条目 */
 export type Manifest = { export_format_version: typeof EXPORT_FORMAT_VERSION }
 
-/** chat_session_index.json 的一项，只列出成功写出的会话；位于全部会话 JSON 之后、图片之前 */
+/** chat_session_index.json 的一项，只列出成功写出的会话；位于全部会话 JSON 之后、附件之前 */
 export type SessionIndexEntry = {
   id: string
   title: string | null
@@ -162,14 +162,14 @@ export type FileEntry = {
   file_size: number
   token_usage: number | null
   inserted_at: Iso8601Utc
-  /** 图片导出成功时为 ZIP 条目名，否则为 null；条目也可能不存在 */
+  /** 附件原件导出成功时为 ZIP 条目名，否则为 null；条目也可能不存在 */
   export_path: string | null
   is_image: boolean
   width: number | null
   height: number | null
 }
 
-/** 非图片文件只有元数据，本体不在产物里 */
+/** 附件片段；本地存在原件时 export_path 指向 ZIP 条目。 */
 export type FileFragment = { type: 'FILE'; files: FileEntry[] }
 
 export type ImageSearchStatus = SearchStatus
