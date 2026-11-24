@@ -274,57 +274,81 @@ const runSpeechTurn = async (call: CallSession, wav: Blob) => {
 
   try {
     const { apiKey, asrChannel } = useSettings.getState()
-    const framePromise = captureVideoFrame()
+    const frameUploadController = new AbortController()
+    const abortFrameUpload = () => frameUploadController.abort()
+    controller.signal.addEventListener('abort', abortFrameUpload, { once: true })
+    const framePromise = captureVideoFrame().catch(() => null)
     // 语音转写与摄像头抓帧上传并行执行，减少额外延迟
-    const uploadFramePromise = framePromise.then(async (file) => {
-      if (!file) {
-        return null
-      }
-      let serverId: string | null = null
-      const { chatProtocol, visionChannel, ocrChannel } = useSettings.getState()
-      if (
-        chatProtocol === 'deepseek' &&
-        visionChannel.mode === 'inherit' &&
-        ocrChannel.mode === 'inherit'
-      ) {
-        try {
-          const uploaded = await uploadFile(apiKey ?? '', file, null, controller.signal)
-          serverId = uploaded.id
-        } catch {
-          // 上传失败时保留本地 blob，交由 streamReply 的 prepareFiles 重试或降级
+    const uploadFramePromise = framePromise
+      .then(async (file) => {
+        if (!file || frameUploadController.signal.aborted || activeCall !== call) {
+          return null
         }
-      }
-      return {
-        id: createId(),
-        serverId,
-        name: file.name,
-        size: file.size,
-        isImage: true,
-        mimeType: file.type,
-        blob: file,
-      }
-    })
+        let serverId: string | null = null
+        const { chatProtocol, visionChannel, ocrChannel } = useSettings.getState()
+        if (
+          chatProtocol === 'deepseek' &&
+          visionChannel.mode === 'inherit' &&
+          ocrChannel.mode === 'inherit'
+        ) {
+          try {
+            const uploaded = await uploadFile(
+              apiKey ?? '',
+              file,
+              null,
+              frameUploadController.signal
+            )
+            serverId = uploaded.id
+          } catch {
+            // 上传失败时保留本地 blob，交由 streamReply 的 prepareFiles 重试或降级
+          }
+        }
+        if (frameUploadController.signal.aborted || activeCall !== call) {
+          return null
+        }
+        return {
+          id: createId(),
+          serverId,
+          name: file.name,
+          size: file.size,
+          isImage: true,
+          mimeType: file.type,
+          blob: file,
+        }
+      })
+      .catch(() => null)
 
-    const transcript = (
-      await transcribe(
-        apiKey ?? '',
-        wav,
-        controller.signal,
-        asrChannel.mode === 'custom' ? asrChannel : undefined
-      )
-    ).trim()
+    let transcript = ''
+    try {
+      transcript = (
+        await transcribe(
+          apiKey ?? '',
+          wav,
+          controller.signal,
+          asrChannel.mode === 'custom' ? asrChannel : undefined
+        )
+      ).trim()
+    } catch (error) {
+      frameUploadController.abort()
+      throw error
+    }
     if (controller.signal.aborted || activeCall !== call) {
+      frameUploadController.abort()
       return
     }
     if (!transcript) {
+      frameUploadController.abort()
       resumeListening(call)
       return
     }
     useVoiceCall.setState({ userText: transcript, assistantText: '', phase: 'thinking' })
 
-    const files = matchesRefusalKeyword(transcript)
-      ? []
-      : await uploadFramePromise.then((file) => (file ? [file] : []))
+    const refused = matchesRefusalKeyword(transcript)
+    if (refused) {
+      frameUploadController.abort()
+    }
+    const files = refused ? [] : await uploadFramePromise.then((file) => (file ? [file] : []))
+    controller.signal.removeEventListener('abort', abortFrameUpload)
     if (controller.signal.aborted || activeCall !== call) {
       return
     }

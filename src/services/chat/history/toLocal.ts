@@ -199,6 +199,17 @@ const toBlocks = (fragments: Fragment[], messageId: string): ReplyBlock[] => {
             signature: result.signature,
           })
         })
+      case 'GENERATED_IMAGE':
+        return [
+          {
+            type: 'image',
+            fileId: item.id,
+            mimeType: item.mime_type || 'image/png',
+            ...(item.prompt ? { prompt: item.prompt } : {}),
+            ...(item.size ? { size: item.size } : {}),
+            status: 'done',
+          },
+        ]
       default:
         return []
     }
@@ -283,17 +294,35 @@ const buildTree = (file: SessionFile): Pick<Session, 'messages' | 'rootMessageId
 
 /** 转换单个会话，并列出本会话目录下需要从 ZIP 读取的图片。 */
 export const toLocalSession = (file: SessionFile): LocalSession => {
+  const updatedAt = time(file.updated_at)
   const session: Session = {
     id: file.id,
     // 空标题按「新对话」显示，导出时还原为 null。
     title: file.title ?? '',
     createdAt: time(file.inserted_at),
-    updatedAt: time(file.updated_at),
+    updatedAt,
+    ...(file.pinned ? { pinnedAt: updatedAt || Date.now() } : {}),
     ...buildTree(file),
   }
   const images = new Map<string, string>()
+  const registerImagePath = (rawPath: string | null | undefined, id: string) => {
+    // 读取端把条目名规范为 NFC，引用也按同样规则比较。
+    const path = rawPath?.normalize('NFC')
+    if (path === undefined) {
+      return
+    }
+    // 图片只能在本会话目录下，同一条目不能对应不同文件。
+    if (!path.startsWith(sessionFilesDir(file.id)) || (images.get(path) ?? id) !== id) {
+      fail('backupInvalidFiles')
+    }
+    images.set(path, id)
+  }
   for (const message of file.messages) {
     for (const item of message.fragments) {
+      if (item.type === 'GENERATED_IMAGE') {
+        registerImagePath(item.export_path, item.id)
+        continue
+      }
       if (item.type !== 'FILE') {
         continue
       }
@@ -301,19 +330,7 @@ export const toLocalSession = (file: SessionFile): LocalSession => {
         if (!entry.is_image) {
           continue
         }
-        // 读取端把条目名规范为 NFC，引用也按同样规则比较。
-        const path = entry.export_path?.normalize('NFC')
-        if (path === undefined) {
-          continue
-        }
-        // 图片只能在本会话目录下，同一条目不能对应不同文件。
-        if (
-          !path.startsWith(sessionFilesDir(file.id)) ||
-          (images.get(path) ?? entry.id) !== entry.id
-        ) {
-          fail('backupInvalidFiles')
-        }
-        images.set(path, entry.id)
+        registerImagePath(entry.export_path, entry.id)
       }
     }
   }

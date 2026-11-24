@@ -36,11 +36,15 @@ export const useVoiceInput = (onText: (text: string) => void) => {
   const recordingRef = useRef<Recording | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
   const operationRef = useRef(0)
+  const startingRef = useRef(false)
+  const startPromiseRef = useRef<Promise<Recording | null> | null>(null)
   const onTextRef = useRef(onText)
   onTextRef.current = onText
 
   const cancelOperation = useCallback(() => {
     operationRef.current++
+    startingRef.current = false
+    startPromiseRef.current = null
     recordingRef.current?.cancel()
     recordingRef.current = null
     controllerRef.current?.abort()
@@ -53,13 +57,19 @@ export const useVoiceInput = (onText: (text: string) => void) => {
   }, [cancelOperation])
 
   const finish = useCallback(async () => {
+    const operation = operationRef.current
+    if (!recordingRef.current && startingRef.current && startPromiseRef.current) {
+      await startPromiseRef.current
+      if (operationRef.current !== operation) {
+        return
+      }
+    }
     const recording = recordingRef.current
     if (!recording) {
-      // 仍在等待麦克风授权时也允许取消；迟到的录音对象会立即释放。
+      // 录音尚未就绪且等待后仍无实例（例如权限拒绝或取消），安全恢复 idle。
       cancel()
       return
     }
-    const operation = operationRef.current
     recordingRef.current = null
     let controller: AbortController | null = null
     try {
@@ -103,29 +113,42 @@ export const useVoiceInput = (onText: (text: string) => void) => {
   }, [cancel])
 
   const start = useCallback(async () => {
-    if (!AVAILABLE || status !== 'idle') {
+    if (!AVAILABLE || status !== 'idle' || startingRef.current) {
       return
     }
     const operation = ++operationRef.current
+    startingRef.current = true
+    // 立即进入 recording 状态，确保移动端 340ms 长按触发后同步挂上 touch-action/user-select 抑制，防止 Android WebView 在 getUserMedia 等待期间触发 pointercancel。
     setStatus('recording')
-    try {
-      const recording = await startRecording(() => {
-        if (operationRef.current === operation) {
-          showToast({ key: 'voiceInputLimitReached' })
-          void finish()
+    const startPromise = (async (): Promise<Recording | null> => {
+      try {
+        const recording = await startRecording(() => {
+          if (operationRef.current === operation) {
+            showToast({ key: 'voiceInputLimitReached' })
+            void finish()
+          }
+        })
+        if (operationRef.current !== operation) {
+          recording.cancel()
+          return null
         }
-      })
-      if (operationRef.current !== operation) {
-        recording.cancel()
-        return
+        recordingRef.current = recording
+        return recording
+      } catch (error) {
+        if (operationRef.current === operation) {
+          setStatus('idle')
+          showToast(describeRecordingError(error))
+        }
+        return null
+      } finally {
+        if (operationRef.current === operation) {
+          startingRef.current = false
+          startPromiseRef.current = null
+        }
       }
-      recordingRef.current = recording
-    } catch (error) {
-      if (operationRef.current === operation) {
-        setStatus('idle')
-        showToast(describeRecordingError(error))
-      }
-    }
+    })()
+    startPromiseRef.current = startPromise
+    await startPromise
   }, [status, finish])
 
   const toggle = useCallback(async () => {

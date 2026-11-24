@@ -57,7 +57,7 @@ const alignLeft = (anchor: DOMRect, width: number, align: Align, alignOffset: nu
     return clampLeft(anchor.left + anchor.width / 2 - width / 2 + alignOffset, width)
   }
   if (align === 'end') {
-    return Math.max(VIEWPORT_PADDING, anchor.right - width + alignOffset)
+    return clampLeft(anchor.right - width + alignOffset, width)
   }
   return clampLeft(anchor.left + alignOffset, width)
 }

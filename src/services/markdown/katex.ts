@@ -12,6 +12,11 @@ export const ensureKatex = (): Katex | Promise<Katex> => {
     import('katex'),
     import('katex/contrib/mhchem'),
     import('katex/dist/katex.min.css'),
-  ]).then(([module]) => (katex = module.default))
+  ])
+    .then(([module]) => (katex = module.default))
+    .catch((error: unknown) => {
+      katexPromise = null
+      throw error
+    })
   return katexPromise
 }

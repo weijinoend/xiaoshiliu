@@ -231,9 +231,11 @@ const applyConfigSnippet = (raw: string): boolean => {
     return false
   }
 
-  const nextProtocol: ChatProtocol =
-    wireApi === 'responses' ? 'responses' : wireApi ? 'openai' : baseUrl ? 'openai' : 'deepseek'
-  setChatProtocol(nextProtocol)
+  if (wireApi === 'responses') {
+    setChatProtocol('responses')
+  } else if (wireApi || baseUrl) {
+    setChatProtocol('openai')
+  }
   if (baseUrl) {
     setApiOrigin(baseUrl)
   }

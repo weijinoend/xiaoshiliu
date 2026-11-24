@@ -1,5 +1,5 @@
 import { useTranslate } from '../../i18n/index.js'
-import { memo, useEffect, useMemo, useReducer, useState } from 'react'
+import { memo, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import Prism from 'prismjs'
 import {
   getHighlightLang,
@@ -26,6 +26,15 @@ const CodeInfoRow = ({
 }) => {
   const t = useTranslate()
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current)
+      }
+    },
+    []
+  )
   return (
     <div className={styles.container}>
       {onToggleDiagram ? (
@@ -59,7 +68,13 @@ const CodeInfoRow = ({
             return
           }
           setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
+          if (copyTimerRef.current !== null) {
+            window.clearTimeout(copyTimerRef.current)
+          }
+          copyTimerRef.current = window.setTimeout(() => {
+            copyTimerRef.current = null
+            setCopied(false)
+          }, 1500)
         }}
       >
         {copied ? <IconCheckOutline16 /> : <IconCopyOutline16 />}
@@ -90,11 +105,13 @@ export const CodeBlock = memo(function CodeBlock({
       return
     }
     let unmounted = false
-    loadHighlight(lang).then(() => {
-      if (!unmounted) {
-        rerender()
-      }
-    })
+    loadHighlight(lang)
+      .then(() => {
+        if (!unmounted) {
+          rerender()
+        }
+      })
+      .catch(() => {})
     return () => {
       unmounted = true
     }

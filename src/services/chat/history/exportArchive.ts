@@ -27,6 +27,12 @@ export const exportArchive = async (
             originals.set(file.id, await db.loadFile(file.id))
           }
         }
+      } else {
+        for (const block of message.blocks) {
+          if (block.type === 'image' && block.fileId && !originals.has(block.fileId)) {
+            originals.set(block.fileId, await db.loadFile(block.fileId))
+          }
+        }
       }
     }
     const images = new Map<string, Blob>()

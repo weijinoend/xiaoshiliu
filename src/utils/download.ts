@@ -1,4 +1,4 @@
-import { getAndroidProxyOrigin } from '../services/api/origin.js'
+import { getAndroidProxyOrigin, getAndroidProxyToken } from '../services/api/origin.js'
 
 export type DownloadDestination = 'android' | 'picker' | 'browser'
 
@@ -27,11 +27,13 @@ export const saveDownloadedBlob = async (
   const androidProxy = getAndroidProxyOrigin()
   if (androidProxy) {
     const mime = blob.type || 'application/octet-stream'
+    const token = getAndroidProxyToken()
     const endpoint = `${androidProxy}/__deepjeek_save_file?name=${encodeURIComponent(filename)}&mime=${encodeURIComponent(mime)}`
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': mime,
+        ...(token ? { 'X-Proxy-Token': token } : {}),
       },
       body: blob,
     })

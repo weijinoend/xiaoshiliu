@@ -216,6 +216,8 @@ export const toggleReadAloud = (
         controller.signal,
         ttsChannel.mode === 'custom' ? ttsChannel : undefined
       )
+      let streamDone = false
+      const activeSources = new Set<AudioBufferSourceNode>()
       const { lastSource } = await scheduleTtsStream({
         context,
         destination: context.destination,
@@ -224,16 +226,27 @@ export const toggleReadAloud = (
         signal: controller.signal,
         initialNextTime: 0,
         startDelay: START_DELAY,
-        onSource: () => {},
+        onSource: (source) => {
+          activeSources.add(source)
+          source.addEventListener(
+            'ended',
+            () => {
+              activeSources.delete(source)
+              if (streamDone && activeSources.size === 0) {
+                finish(controller)
+              }
+            },
+            { once: true }
+          )
+        },
         onFirstAudio: () => {
           if (useReadAloud.getState().status === 'loading') {
             useReadAloud.setState({ status: 'playing' })
           }
         },
       })
-      if (lastSource) {
-        lastSource.onended = () => finish(controller)
-      } else {
+      streamDone = true
+      if (!lastSource || activeSources.size === 0) {
         finish(controller)
       }
     } catch (error) {

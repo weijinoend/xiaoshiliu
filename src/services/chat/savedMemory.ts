@@ -291,7 +291,11 @@ export const extractMemoriesFromTurn = async ({
           changedText = op.content
         }
       } else if (op.action === 'delete') {
+        const beforeCount = useSavedMemories.getState().items.length
         deleteSavedMemory(op.id)
+        if (!changedText && useSavedMemories.getState().items.length < beforeCount) {
+          changedText = op.id
+        }
       }
     }
     if (changedText) {

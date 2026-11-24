@@ -74,19 +74,24 @@ export const Spectrum = ({ getAnalyser }: { getAnalyser: () => AnalyserNode | nu
         let target = 0
         if (analyser) {
           const { from, to, center } = ranges[index]
-          let peak = -Infinity
+          let peak = DB_FLOOR
           if (to - from <= 1) {
-            // 频段窄于一个 bin：在相邻 bin 之间线性插值，避免低频几根柱子完全同步
+            // 频段窄于一个 bin：在相邻 bin 之间线性插值，避免低频几根柱子完全同步；静音段为 -Infinity 时夹紧底噪，防止 -Infinity * 0 产出 NaN
             const base = Math.min(data.length - 2, Math.floor(center))
             const weight = center - base
-            peak = data[base] * (1 - weight) + data[base + 1] * weight
+            const a = Number.isFinite(data[base]) ? data[base] : DB_FLOOR
+            const b = Number.isFinite(data[base + 1]) ? data[base + 1] : DB_FLOOR
+            peak = a * (1 - weight) + b * weight
           } else {
             for (let bin = from; bin < to; bin += 1) {
-              peak = Math.max(peak, data[bin])
+              if (Number.isFinite(data[bin])) {
+                peak = Math.max(peak, data[bin])
+              }
             }
           }
           const db = peak + tilts[index]
-          target = Math.min(1, Math.max(0, (db - DB_FLOOR) / (DB_CEIL - DB_FLOOR)))
+          const rawTarget = (db - DB_FLOOR) / (DB_CEIL - DB_FLOOR)
+          target = Number.isFinite(rawTarget) ? Math.min(1, Math.max(0, rawTarget)) : 0
         }
         targets[index] = target
       }

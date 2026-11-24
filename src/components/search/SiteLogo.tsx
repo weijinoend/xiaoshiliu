@@ -31,7 +31,11 @@ export const SiteLogo = ({
 export const SiteThumbnails = ({ sources }: { sources: Source[] }) => (
   <span className={styles.group}>
     {sources.slice(0, 4).map((source) => (
-      <SiteLogo key={source.url} url={source.siteIcon} className={styles.thumbnail} />
+      <SiteLogo
+        key={`${source.index}-${source.url}`}
+        url={source.siteIcon}
+        className={styles.thumbnail}
+      />
     ))}
   </span>
 )

@@ -14,9 +14,10 @@ import {
   type ArchiveEntry,
 } from './zipReader.js'
 
-const SESSION_BATCH_SIZE = 40
-const FILE_BATCH_MAX_COUNT = 16
-const FILE_BATCH_MAX_BYTES = 4 * 1024 * 1024
+const SESSION_BATCH_SIZE = 100
+const FILE_BATCH_MAX_COUNT = 40
+const FILE_BATCH_MAX_BYTES = 8 * 1024 * 1024
+const DEFERRED_IMAGE_MAX_BYTES = 64 * 1024 * 1024
 
 /** 从原件字节补充图片 MIME；无法识别时为空字符串，图片身份仍由归档的 is_image 决定。 */
 const imageType = (bytes: Uint8Array): string => {
@@ -118,6 +119,9 @@ export const importArchive = async (
   const images = new Map<string, string>()
   /** 已保存的原件：文件 ID → MIME。同一图片出现在多个会话目录时只保存一次。 */
   const stored = new Map<string, string>()
+  /** 重打包归档中若图片条目先于对应会话 JSON 出现，暂存等待会话解析后立刻关联。 */
+  const deferredImages = new Map<string, Blob>()
+  let deferredBytes = 0
   let manifest = false
   let index: SessionIndexEntry[] | undefined
   let rootPrefix: string | null = knownRootPrefix ?? null
@@ -144,12 +148,10 @@ export const importArchive = async (
     await db.saveStagingFiles(batch)
   }
 
-  const saveImage = async (entry: ArchiveEntry, id: string) => {
+  const saveImageBlob = async (data: Blob, id: string) => {
     if (stored.has(id)) {
-      await skipEntry(entry)
       return
     }
-    const data = await readEntry(entry)
     const type = imageType(new Uint8Array(await data.slice(0, 16).arrayBuffer()))
     const blob = new Blob([data], { type })
     stored.set(id, type)
@@ -158,6 +160,14 @@ export const importArchive = async (
     if (fileBatch.length >= FILE_BATCH_MAX_COUNT || fileBatchBytes >= FILE_BATCH_MAX_BYTES) {
       await flushFiles()
     }
+  }
+
+  const saveImage = async (entry: ArchiveEntry, id: string) => {
+    if (stored.has(id)) {
+      await skipEntry(entry)
+      return
+    }
+    await saveImageBlob(await readEntry(entry), id)
   }
 
   try {
@@ -174,6 +184,7 @@ export const importArchive = async (
       }
       const path = entry.path.slice(rootPrefix.length)
       const sessionId = parseSessionPath(path)
+      const fileDirMatch = /^chat_sessions\/([^/]+)_files\//.exec(path)
       if (path === MANIFEST_PATH && !manifest) {
         checkManifest(await readJson(entry))
         manifest = true
@@ -188,6 +199,12 @@ export const importArchive = async (
         imported.add(sessionId)
         for (const [imagePath, id] of local.images) {
           images.set(imagePath, id)
+          const pending = deferredImages.get(imagePath)
+          if (pending) {
+            deferredImages.delete(imagePath)
+            deferredBytes -= pending.size
+            await saveImageBlob(pending, id)
+          }
         }
         sessionBatch.push(local.session)
         if (sessionBatch.length >= SESSION_BATCH_SIZE) {
@@ -196,10 +213,18 @@ export const importArchive = async (
         onProgress?.(imported.size)
       } else if (path === INDEX_PATH && !index) {
         index = readSessionIndex(await readJson(entry))
-      } else if (/^chat_sessions\/([^/]+)_files\//.test(path)) {
-        // 没有被引用的条目不保存，引用了但缺失的图片只展示文件名。
+      } else if (fileDirMatch) {
         const id = images.get(path)
-        await (id === undefined ? skipEntry(entry) : saveImage(entry, id))
+        if (id !== undefined) {
+          await saveImage(entry, id)
+        } else if (!imported.has(fileDirMatch[1]) && deferredBytes + entry.size <= DEFERRED_IMAGE_MAX_BYTES) {
+          const data = await readEntry(entry)
+          deferredImages.set(path, data)
+          deferredBytes += data.size
+        } else {
+          // 所属会话已解析仍未引用该路径，或超额孤立文件，直接跳过。
+          await skipEntry(entry)
+        }
       } else if (!path.includes('/')) {
         // 兼容未来新增的顶层元信息文件（如记忆/分组配置）
         await skipEntry(entry)
@@ -207,6 +232,7 @@ export const importArchive = async (
         fail('backupIncomplete')
       }
     }
+    deferredImages.clear()
     await flushSessions()
     await flushFiles()
   } catch (error) {

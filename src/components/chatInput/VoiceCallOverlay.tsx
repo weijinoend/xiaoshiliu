@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useEffect, useRef, type CSSProperties } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { registerAndroidBackHandler } from '../../app/androidBack.js'
 import { useTranslate } from '../../i18n/index.js'
@@ -32,15 +32,38 @@ import styles from './VoiceCallOverlay.module.css'
 /** Gemini Live 风格的连续语音通话浮层 */
 export const VoiceCallOverlay = () => {
   const t = useTranslate()
-  const call = useVoiceCall()
+  const active = useVoiceCall((state) => state.active)
+  const videoStream = useVoiceCall((state) => state.videoStream)
+  const cameraEnabled = useVoiceCall((state) => state.cameraEnabled)
+  const phase = useVoiceCall((state) => state.phase)
+  const error = useVoiceCall((state) => state.error)
+  const speechDetected = useVoiceCall((state) => state.speechDetected)
+  const muted = useVoiceCall((state) => state.muted)
+  const facingMode = useVoiceCall((state) => state.facingMode)
+  const cameraPending = useVoiceCall((state) => state.cameraPending)
+  const userText = useVoiceCall((state) => state.userText)
+  const assistantText = useVoiceCall((state) => state.assistantText)
   const model = useSettings((state) => state.model)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const centerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const syncLevel = (level: number) => {
+      centerRef.current?.style.setProperty('--orb-level', String(level))
+    }
+    syncLevel(useVoiceCall.getState().level)
+    return useVoiceCall.subscribe((state, prev) => {
+      if (state.level !== prev.level) {
+        syncLevel(state.level)
+      }
+    })
+  }, [active, cameraEnabled, videoStream])
 
   useEffect(() => {
     const video = videoRef.current
     setVoiceCallVideoElement(video)
     if (video) {
-      video.srcObject = call.videoStream
+      video.srcObject = videoStream
     }
     return () => {
       if (video) {
@@ -48,10 +71,10 @@ export const VoiceCallOverlay = () => {
       }
       setVoiceCallVideoElement(null)
     }
-  }, [call.videoStream, call.cameraEnabled])
+  }, [videoStream, cameraEnabled, active])
 
   useEffect(() => {
-    if (!call.active) {
+    if (!active) {
       return
     }
     const unregisterBack = registerAndroidBackHandler(150, () => {
@@ -63,6 +86,10 @@ export const VoiceCallOverlay = () => {
         event.preventDefault()
         endVoiceCall()
       } else if (event.code === 'Space' && !event.repeat) {
+        const target = event.target as HTMLElement | null
+        if (target?.closest('button, a, input, textarea, select, [role="button"], [contenteditable]')) {
+          return
+        }
         event.preventDefault()
         interruptVoiceCall()
       }
@@ -72,36 +99,29 @@ export const VoiceCallOverlay = () => {
       unregisterBack()
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [call.active])
+  }, [active])
 
-  if (!call.active) {
+  if (!active) {
     return null
   }
 
-  const busy =
-    call.phase === 'transcribing' || call.phase === 'thinking' || call.phase === 'speaking'
+  const busy = phase === 'transcribing' || phase === 'thinking' || phase === 'speaking'
   const errorMessage =
-    call.error === null
-      ? null
-      : typeof call.error === 'string'
-        ? call.error
-        : t(call.error.key, call.error.params)
+    error === null ? null : typeof error === 'string' ? error : t(error.key, error.params)
 
   const statusLabel = errorMessage
     ? errorMessage
-    : call.phase === 'muted'
+    : phase === 'muted'
       ? t('voiceCallMuted')
-      : call.phase === 'transcribing'
+      : phase === 'transcribing'
         ? t('voiceCallTranscribing')
-        : call.phase === 'thinking'
+        : phase === 'thinking'
           ? t('voiceCallThinking')
-          : call.phase === 'speaking'
+          : phase === 'speaking'
             ? t('voiceCallSpeaking')
-            : call.speechDetected
+            : speechDetected
               ? t('voiceCallHearing')
               : t('voiceCallListening')
-
-  const orbStyle = { '--orb-level': String(call.level) } as CSSProperties
 
   return createPortal(
     <div
@@ -112,7 +132,7 @@ export const VoiceCallOverlay = () => {
     >
       <div className={styles.header}>
         <div className={styles.titleGroup}>
-          <span className={clsx(styles.liveDot, call.muted && styles.liveDotMuted)} />
+          <span className={clsx(styles.liveDot, muted && styles.liveDotMuted)} />
           <span className={styles.title}>{t('voiceCallTitle')}</span>
           <span className={styles.modelTag}>{model}</span>
         </div>
@@ -127,23 +147,19 @@ export const VoiceCallOverlay = () => {
         </button>
       </div>
 
-      <div className={styles.center}>
-        {call.cameraEnabled && call.videoStream ? (
+      <div ref={centerRef} className={styles.center}>
+        {cameraEnabled && videoStream ? (
           <div
             className={styles.videoStage}
-            style={orbStyle}
             onClick={() => {
-              if (busy || call.speechDetected) {
+              if (busy || speechDetected) {
                 interruptVoiceCall()
               }
             }}
           >
             <video
               ref={videoRef}
-              className={clsx(
-                styles.videoElement,
-                call.facingMode === 'user' && styles.videoMirror
-              )}
+              className={clsx(styles.videoElement, facingMode === 'user' && styles.videoMirror)}
               autoPlay
               playsInline
               muted
@@ -152,6 +168,7 @@ export const VoiceCallOverlay = () => {
               type="button"
               className={styles.videoSwitchBtn}
               aria-label={t('voiceCallSwitchCamera')}
+              disabled={cameraPending}
               onClick={(event) => {
                 event.stopPropagation()
                 switchVoiceCallCamera()
@@ -162,22 +179,21 @@ export const VoiceCallOverlay = () => {
             <div
               className={clsx(
                 styles.videoOrbBadge,
-                call.speechDetected && call.phase === 'listening' && styles.orbCoreHearing,
-                (call.phase === 'transcribing' || call.phase === 'thinking') && styles.orbCoreBusy,
-                call.phase === 'muted' && styles.orbCoreMuted
+                speechDetected && phase === 'listening' && styles.orbCoreHearing,
+                (phase === 'transcribing' || phase === 'thinking') && styles.orbCoreBusy,
+                phase === 'muted' && styles.orbCoreMuted
               )}
             >
-              {call.muted ? <IconMicOff16 /> : <IconVoiceCall16 />}
+              {muted ? <IconMicOff16 /> : <IconVoiceCall16 />}
             </div>
           </div>
         ) : (
           <button
             type="button"
             className={styles.orbButton}
-            style={orbStyle}
             aria-label={busy ? t('voiceCallInterrupt') : statusLabel}
             onClick={() => {
-              if (busy || call.speechDetected) {
+              if (busy || speechDetected) {
                 interruptVoiceCall()
               }
             }}
@@ -186,14 +202,14 @@ export const VoiceCallOverlay = () => {
             <span
               className={clsx(
                 styles.orbCore,
-                call.speechDetected && call.phase === 'listening' && styles.orbCoreHearing,
-                (call.phase === 'transcribing' || call.phase === 'thinking') && styles.orbCoreBusy,
-                call.phase === 'muted' && styles.orbCoreMuted,
-                call.phase === 'error' && styles.orbCoreError
+                speechDetected && phase === 'listening' && styles.orbCoreHearing,
+                (phase === 'transcribing' || phase === 'thinking') && styles.orbCoreBusy,
+                phase === 'muted' && styles.orbCoreMuted,
+                phase === 'error' && styles.orbCoreError
               )}
             >
               <span className={styles.orbInnerIcon}>
-                {call.muted ? <IconMicOff16 /> : <IconVoiceCall16 />}
+                {muted ? <IconMicOff16 /> : <IconVoiceCall16 />}
               </span>
             </span>
           </button>
@@ -203,49 +219,47 @@ export const VoiceCallOverlay = () => {
           {statusLabel}
         </div>
 
-        {call.userText || call.assistantText ? (
+        {userText || assistantText ? (
           <div className={styles.transcriptBox}>
-            {call.userText ? <div className={styles.userCaption}>{call.userText}</div> : null}
-            {call.assistantText ? (
-              <div className={styles.assistantCaption}>{call.assistantText}</div>
-            ) : null}
+            {userText ? <div className={styles.userCaption}>{userText}</div> : null}
+            {assistantText ? <div className={styles.assistantCaption}>{assistantText}</div> : null}
           </div>
         ) : null}
       </div>
 
       <div className={styles.controls}>
-        <Tooltip content={call.muted ? t('voiceCallUnmute') : t('voiceCallMute')}>
+        <Tooltip content={muted ? t('voiceCallUnmute') : t('voiceCallMute')}>
           <button
             type="button"
-            className={clsx(styles.controlBtn, call.muted && styles.controlBtnActive)}
-            aria-label={call.muted ? t('voiceCallUnmute') : t('voiceCallMute')}
-            aria-pressed={call.muted}
+            className={clsx(styles.controlBtn, muted && styles.controlBtnActive)}
+            aria-label={muted ? t('voiceCallUnmute') : t('voiceCallMute')}
+            aria-pressed={muted}
             onClick={toggleVoiceCallMute}
           >
-            {call.muted ? <IconMicOff16 /> : <IconMicOutline16 />}
+            {muted ? <IconMicOff16 /> : <IconMicOutline16 />}
           </button>
         </Tooltip>
 
-        <Tooltip content={call.cameraEnabled ? t('voiceCallCameraOff') : t('voiceCallCameraOn')}>
+        <Tooltip content={cameraEnabled ? t('voiceCallCameraOff') : t('voiceCallCameraOn')}>
           <button
             type="button"
-            className={clsx(styles.controlBtn, call.cameraEnabled && styles.controlBtnActive)}
-            aria-label={call.cameraEnabled ? t('voiceCallCameraOff') : t('voiceCallCameraOn')}
-            aria-pressed={call.cameraEnabled}
-            disabled={call.cameraPending}
+            className={clsx(styles.controlBtn, cameraEnabled && styles.controlBtnActive)}
+            aria-label={cameraEnabled ? t('voiceCallCameraOff') : t('voiceCallCameraOn')}
+            aria-pressed={cameraEnabled}
+            disabled={cameraPending}
             onClick={toggleVoiceCallCamera}
           >
-            {call.cameraEnabled ? <IconCameraOutline16 /> : <IconCameraOff16 />}
+            {cameraEnabled ? <IconCameraOutline16 /> : <IconCameraOff16 />}
           </button>
         </Tooltip>
 
-        {call.cameraEnabled ? (
+        {cameraEnabled ? (
           <Tooltip content={t('voiceCallSwitchCamera')}>
             <button
               type="button"
               className={styles.controlBtn}
               aria-label={t('voiceCallSwitchCamera')}
-              disabled={call.cameraPending}
+              disabled={cameraPending}
               onClick={switchVoiceCallCamera}
             >
               <IconFlipCamera16 />
@@ -264,7 +278,7 @@ export const VoiceCallOverlay = () => {
               <IconStopFill16 />
             </button>
           </Tooltip>
-        ) : call.phase === 'listening' && call.speechDetected ? (
+        ) : phase === 'listening' && speechDetected ? (
           <Tooltip content={t('voiceCallSendNow')}>
             <button
               type="button"

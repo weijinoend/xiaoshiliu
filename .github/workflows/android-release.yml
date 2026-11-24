@@ -14,25 +14,28 @@ on:
         required: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@73e4992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 11
+          version: 12.6.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: 24
           cache: 'pnpm'
 
       - name: Setup JDK 17
@@ -67,73 +70,116 @@ jobs:
       - name: Resolve Release Version
         id: ver
         shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION_CODE: ${{ github.event.inputs.version_code }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION_NAME="${TAG#v}"
-          if [ -n "${{ github.event.inputs.version_code }}" ]; then
-            VERSION_CODE="${{ github.event.inputs.version_code }}"
-          else
-            VERSION_CODE="$(grep -oE 'deepchatVersionCode.*:[[:space:]]*[0-9]+' android/app/build.gradle | grep -oE '[0-9]+' | tail -n1 || echo 2)"
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release tag format: $TAG"
+            exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          VERSION_NAME="${TAG#v}"
+          if [ -n "$INPUT_VERSION_CODE" ]; then
+            if [[ ! "$INPUT_VERSION_CODE" =~ ^[0-9]+$ ]]; then
+              echo "::error::Invalid version_code: $INPUT_VERSION_CODE"
+              exit 1
+            fi
+            VERSION_CODE="$INPUT_VERSION_CODE"
+          else
+            VERSION_CODE="$(grep -oE 'deepchatVersionCode.*:[[:space:]]*[0-9]+' android/app/build.gradle | grep -oE '[0-9]+' | tail -n1)"
+            if [[ ! "$VERSION_CODE" =~ ^[0-9]+$ ]]; then
+              echo "::error::Could not determine default versionCode from android/app/build.gradle"
+              exit 1
+            fi
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=$VERSION_CODE"
+          } >> "$GITHUB_OUTPUT"
+          TAG_NOTES="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null || true)"
+          {
+            echo "notes<<__DEEPCHAT_NOTES_EOF__"
+            printf '%s\n' "$TAG_NOTES"
+            echo "__DEEPCHAT_NOTES_EOF__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build web bundle & sync Android assets
         run: |
           pnpm run build
-          npx cap sync android
+          pnpm exec cap sync android
           node scripts/make-android-icons.mjs
 
       - name: Decode Android signing keystore
         shell: bash
         env:
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS }}
+          SIGNING_KEYSTORE_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
         run: |
-          if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
-            echo "::error::Missing SIGNING_KEYSTORE_BASE64 secret. Configure it in Repository Settings -> Secrets -> Actions so the APK shares the exact upgrade signature."
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ] || [ -z "$SIGNING_KEYSTORE_PASS" ] || [ -z "$SIGNING_KEYSTORE_ALIAS" ]; then
+            echo "::error::Missing SIGNING_KEYSTORE_BASE64 / SIGNING_KEYSTORE_PASS / SIGNING_KEY_ALIAS secrets."
             exit 1
           fi
           node -e "
             const fs = require('node:fs');
-            const raw = (process.env.SIGNING_KEYSTORE_BASE64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
+            const raw = (process.env.SIGNING_KEYSTORE_BASE64 || '').replace(/\s+/g, '');
+            if (!/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+              console.error('SIGNING_KEYSTORE_BASE64 contains invalid base64 characters.');
+              process.exit(1);
+            }
             const buf = Buffer.from(raw, 'base64');
             console.log('Decoded keystore bytes:', buf.length);
             if (buf.length < 100) {
               console.error('Decoded keystore looks too small or invalid.');
               process.exit(1);
             }
-            fs.writeFileSync('android/release.keystore', buf);
+            fs.writeFileSync('android/release.keystore', buf, { mode: 0o600 });
           "
-          keytool -list -keystore android/release.keystore -storepass "${{ secrets.SIGNING_KEYSTORE_PASS || 'android' }}" -alias "${{ secrets.SIGNING_KEY_ALIAS || 'androiddebugkey' }}" > /dev/null
+          keytool -list -keystore android/release.keystore -storepass:env SIGNING_KEYSTORE_PASS -alias "$SIGNING_KEYSTORE_ALIAS" > /dev/null
 
       - name: Build signed Release APK
         env:
           DEEPCHAT_KEYSTORE_FILE: ${{ github.workspace }}/android/release.keystore
-          DEEPCHAT_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS || 'android' }}
-          DEEPCHAT_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS || 'androiddebugkey' }}
-          DEEPCHAT_KEY_PASS: ${{ secrets.SIGNING_KEY_PASS || 'android' }}
+          DEEPCHAT_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS }}
+          DEEPCHAT_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          DEEPCHAT_KEY_PASS: ${{ secrets.SIGNING_KEY_PASS }}
+          VERSION_CODE: ${{ steps.ver.outputs.version_code }}
+          VERSION_NAME: ${{ steps.ver.outputs.version_name }}
         run: |
+          if [ -z "$DEEPCHAT_KEY_PASS" ]; then
+            echo "::error::Missing SIGNING_KEY_PASS secret."
+            exit 1
+          fi
           cd android
           sed -i 's/\r$//' gradlew
           chmod +x gradlew
           ./gradlew assembleRelease \
-            -PdeepchatVersionCode=${{ steps.ver.outputs.version_code }} \
-            -PdeepchatVersionName=${{ steps.ver.outputs.version_name }} \
+            -PdeepchatVersionCode="$VERSION_CODE" \
+            -PdeepchatVersionName="$VERSION_NAME" \
             --no-daemon
 
       - name: Prepare Release APK artifact
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.ver.outputs.tag }}
         run: |
           mkdir -p release-assets
-          cp android/app/build/outputs/apk/release/app-release.apk "release-assets/DeepChat-${{ steps.ver.outputs.tag }}.apk"
-          rm -f android/release.keystore
+          cp android/app/build/outputs/apk/release/app-release.apk "release-assets/DeepChat-${RELEASE_TAG}.apk"
+
+      - name: Cleanup signing keystore
+        if: always()
+        shell: bash
+        run: rm -f android/release.keystore
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: DeepChat ${{ steps.ver.outputs.tag }}
+          body: ${{ steps.ver.outputs.notes }}
           generate_release_notes: true
           files: |
             release-assets/DeepChat-${{ steps.ver.outputs.tag }}.apk

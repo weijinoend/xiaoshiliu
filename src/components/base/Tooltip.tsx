@@ -31,16 +31,16 @@ export const Tooltip = ({
   useEffect(() => () => cancel(), [cancel])
 
   // 滚动时收起提示。
+  const visible = open && !isMobile && Boolean(content)
+
   useEffect(() => {
-    if (!open) {
+    if (!visible) {
       return
     }
     const onScroll = () => setOpen(false)
     window.addEventListener('scroll', onScroll, true)
     return () => window.removeEventListener('scroll', onScroll, true)
-  }, [open, setOpen])
-
-  const visible = open && !isMobile && Boolean(content)
+  }, [visible, setOpen])
 
   return (
     <>

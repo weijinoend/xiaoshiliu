@@ -14,6 +14,9 @@ const preventPageScroll = (event: TouchEvent) => {
   if (event.touches.length !== 1) {
     return
   }
+  if (event.target instanceof HTMLInputElement && event.target.type === 'range') {
+    return
+  }
   for (
     let element = event.target instanceof Element ? event.target : null;
     element && element !== document.body;

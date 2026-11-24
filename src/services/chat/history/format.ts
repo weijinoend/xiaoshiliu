@@ -192,6 +192,15 @@ export type ToolImageSearchFragment = {
   group_id?: number
 }
 
+export type GeneratedImageFragment = {
+  type: 'GENERATED_IMAGE'
+  id: string
+  export_path: string | null
+  mime_type?: string
+  prompt?: string
+  size?: string
+}
+
 export type Fragment =
   | RequestFragment
   | ResponseFragment
@@ -206,3 +215,4 @@ export type Fragment =
   | ReadLinkFragment
   | FileFragment
   | ToolImageSearchFragment
+  | GeneratedImageFragment

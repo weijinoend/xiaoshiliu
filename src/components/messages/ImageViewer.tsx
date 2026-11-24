@@ -4,12 +4,13 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type TouchEvent,
-  type WheelEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { registerAndroidBackHandler } from '../../app/androidBack.js'
 import { useTranslate } from '../../i18n/index.js'
+import { loadFile } from '../../services/chat/db.js'
 import { IconCloseOutline16, IconDownloadOutline16 } from '../base/icons.js'
 import { showToast } from '../base/toastState.js'
 import { saveDownloadedUrl } from '../../utils/download.js'
@@ -33,9 +34,22 @@ export const ImageViewer = () => {
   const current = useImageViewer((state) => state.current)
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [ownedUrl, setOwnedUrl] = useState<string | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const lastTouchEndAtRef = useRef(0)
 
   const stateRef = useRef({ scale: 1, x: 0, y: 0 })
   stateRef.current = { scale, x: offset.x, y: offset.y }
+
+  const pointerPanRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+    moved: boolean
+  } | null>(null)
+  const suppressStageClickRef = useRef(false)
 
   const gestureRef = useRef<{
     mode: 'none' | 'pan' | 'pinch'
@@ -64,9 +78,57 @@ export const ImageViewer = () => {
     setOffset({ x: 0, y: 0 })
   }, [])
 
+  const updateZoom = useCallback((next: number) => {
+    const clamped = clampScale(next)
+    setScale(clamped)
+    if (clamped <= 1.02) {
+      setOffset({ x: 0, y: 0 })
+    }
+  }, [])
+
+  useEffect(() => {
+    const fileId = current?.fileId
+    if (!fileId) {
+      setOwnedUrl(null)
+      return
+    }
+    let active = true
+    let objectUrl: string | null = null
+    void loadFile(fileId)
+      .then((blob) => {
+        if (!active || !blob) {
+          return
+        }
+        objectUrl = URL.createObjectURL(blob)
+        setOwnedUrl(objectUrl)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
+      setOwnedUrl(null)
+    }
+  }, [current?.fileId])
+
   useEffect(() => {
     resetTransform()
-  }, [current?.src, resetTransform])
+  }, [current?.src, current?.fileId, resetTransform])
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!current || !stage) {
+      return
+    }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const delta = event.deltaY < 0 ? 0.25 : -0.25
+      updateZoom(stateRef.current.scale + delta)
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    return () => stage.removeEventListener('wheel', onWheel)
+  }, [current, updateZoom])
 
   useEffect(() => {
     if (!current) {
@@ -90,19 +152,59 @@ export const ImageViewer = () => {
     return null
   }
 
-  const updateZoom = (next: number) => {
-    const clamped = clampScale(next)
-    setScale(clamped)
-    if (clamped <= 1.02) {
-      setOffset({ x: 0, y: 0 })
-    }
-  }
+  const displaySrc = ownedUrl ?? current.src
 
   const toggleDoubleZoom = () => {
     if (stateRef.current.scale > 1.15) {
       resetTransform()
     } else {
       setScale(DOUBLE_TAP_SCALE)
+    }
+  }
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch' || event.button !== 0 || stateRef.current.scale <= 1.02) {
+      return
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    pointerPanRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: stateRef.current.x,
+      originY: stateRef.current.y,
+      moved: false,
+    }
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = pointerPanRef.current
+    if (!pan || pan.pointerId !== event.pointerId) {
+      return
+    }
+    const dx = event.clientX - pan.startX
+    const dy = event.clientY - pan.startY
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      pan.moved = true
+    }
+    setOffset({ x: pan.originX + dx, y: pan.originY + dy })
+  }
+
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = pointerPanRef.current
+    if (!pan || pan.pointerId !== event.pointerId) {
+      return
+    }
+    if (pan.moved) {
+      suppressStageClickRef.current = true
+    }
+    pointerPanRef.current = null
+    try {
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+    } catch {
+      // ignore
     }
   }
 
@@ -160,8 +262,9 @@ export const ImageViewer = () => {
       return
     }
     if (event.touches.length === 0) {
+      lastTouchEndAtRef.current = Date.now()
       if (gesture.mode === 'pan' && !gesture.moved) {
-        const now = Date.now()
+        const now = lastTouchEndAtRef.current
         if (now - gesture.lastTapAt < 280) {
           gesture.lastTapAt = 0
           toggleDoubleZoom()
@@ -173,20 +276,18 @@ export const ImageViewer = () => {
     }
   }
 
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const delta = event.deltaY < 0 ? 0.25 : -0.25
-    updateZoom(stateRef.current.scale + delta)
-  }
-
   const onStageClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (suppressStageClickRef.current) {
+      suppressStageClickRef.current = false
+      return
+    }
     if (event.target === event.currentTarget && stateRef.current.scale <= 1.05) {
       closeImageViewer()
     }
   }
 
   const downloadImage = () => {
-    void saveDownloadedUrl(current.src, current.filename || 'image.png')
+    void saveDownloadedUrl(displaySrc, current.filename || 'image.png')
       .then((dest) => {
         if (dest === 'browser') {
           showToast({ key: 'imageSavedToast' })
@@ -229,18 +330,27 @@ export const ImageViewer = () => {
       </div>
 
       <div
+        ref={stageRef}
         className={styles.stage}
         onClick={onStageClick}
-        onDoubleClick={toggleDoubleZoom}
-        onWheel={onWheel}
+        onDoubleClick={() => {
+          if (Date.now() - lastTouchEndAtRef.current > 400) {
+            toggleDoubleZoom()
+          }
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onTouchCancel={onTouchEnd}
       >
         <img
-          src={current.src}
+          src={displaySrc}
           alt={current.alt ?? ''}
+          draggable={false}
           className={styles.image}
           style={{
             transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,

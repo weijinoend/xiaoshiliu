@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { registerAndroidBackHandler } from '../../app/androidBack.js'
 import { useAnchoredPosition, useDismiss } from './anchored.js'
 import styles from './Menu.module.css'
 
@@ -32,7 +33,16 @@ export const Menu = ({
     open,
     { align: 'start', alignOffset: -5, offset: 4 }
   )
-  useDismiss(open, [anchorRef, floatingRef], close)
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    return registerAndroidBackHandler(100, () => {
+      setOpen(false)
+      return true
+    })
+  }, [open])
+  useDismiss(open, [anchorRef, floatingRef], close, { captureEscape: true })
 
   return (
     <>
@@ -51,10 +61,18 @@ export const Menu = ({
                 <div
                   key={option.key}
                   role="menuitem"
+                  tabIndex={0}
                   className={clsx(styles.option, option.danger && styles.danger)}
                   onClick={() => {
                     setOpen(false)
                     option.onSelect()
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setOpen(false)
+                      option.onSelect()
+                    }
                   }}
                 >
                   <span className={styles.icon}>{option.icon}</span>

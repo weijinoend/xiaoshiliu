@@ -38,7 +38,11 @@ export const SearchPanel = () => {
       </div>
       <div className={styles.content}>
         {sources.map((source) => (
-          <SourceCard key={source.url} source={source} className={styles.item} />
+          <SourceCard
+            key={`${source.index}-${source.url}`}
+            source={source}
+            className={styles.item}
+          />
         ))}
       </div>
     </aside>

@@ -1,8 +1,8 @@
 import { Inflate } from 'fflate'
 
-const READ_CHUNK_BYTES = 256 * 1024
+const READ_CHUNK_BYTES = 512 * 1024
 // 控制每轮同步解压的工作量；输出交给调用方保存后才继续读取。
-const INFLATE_CHUNK_BYTES = 8 * 1024
+const INFLATE_CHUNK_BYTES = 128 * 1024
 
 /** ZIP 结构损坏或使用了不支持的特性 */
 export class ArchiveError extends Error {
@@ -309,9 +309,9 @@ export async function* readArchive(file: File): AsyncGenerator<ArchiveEntry> {
 
 /** 读出整个条目：会话 JSON 需要完整解析，图片需要识别类型后整张保存。 */
 export const readEntry = async (entry: ArchiveEntry): Promise<Blob> => {
-  const parts: Blob[] = []
+  const parts: Uint8Array<ArrayBuffer>[] = []
   for await (const chunk of entry.stream) {
-    parts.push(new Blob([chunk as Uint8Array<ArrayBuffer>]))
+    parts.push(chunk as Uint8Array<ArrayBuffer>)
   }
   return new Blob(parts)
 }

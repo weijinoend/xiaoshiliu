@@ -330,13 +330,21 @@ export const uploadAttachment = (
       }
       throw error
     })
-    .finally(() => pending.delete(id))
+    .finally(() => {
+      if (pending.get(id)?.controller === controller) {
+        pending.delete(id)
+      }
+    })
   pending.set(id, { promise, controller })
   return promise
 }
 
 export const cancelUpload = (id: string) => {
-  pending.get(id)?.controller.abort()
+  const current = pending.get(id)
+  if (current) {
+    pending.delete(id)
+    current.controller.abort()
+  }
   setTask(id, null)
 }
 

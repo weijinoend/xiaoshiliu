@@ -3,11 +3,15 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
+import tls from 'node:tls'
 import { fileURLToPath } from 'node:url'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.resolve(root, 'dist')
 const port = Number(process.env.PORT || 8090)
+const host = process.env.HOST || '127.0.0.1'
+const MAX_BODY_BYTES = 64 * 1024 * 1024
+const PROXY_CACHE_TTL_MS = 10_000
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -34,6 +38,38 @@ const HOP_BY_HOP_HEADERS = new Set([
   'cookie',
 ])
 
+const isBlockedMetadataHost = (hostname) => {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  return (
+    h === '169.254.169.254' ||
+    h === 'metadata.google.internal' ||
+    h === '100.100.100.200' ||
+    h === 'fd00:ec2::254'
+  )
+}
+
+const matchesNoProxy = (hostname) => {
+  const raw = process.env.NO_PROXY || process.env.no_proxy || ''
+  if (!raw.trim()) {
+    return false
+  }
+  const h = hostname.toLowerCase()
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .some((entry) => {
+      if (entry === '*') {
+        return true
+      }
+      const clean = entry.split(':')[0]
+      if (clean.startsWith('.')) {
+        return h === clean.slice(1) || h.endsWith(clean)
+      }
+      return h === clean || h.endsWith(`.${clean}`)
+    })
+}
+
 const isLocalHost = (hostname) => {
   const h = hostname.toLowerCase()
   return (
@@ -49,10 +85,12 @@ const isLocalHost = (hostname) => {
 }
 
 let cachedProxyUrl
+let cachedProxyAt = 0
 const resolveSystemProxy = () => {
-  if (cachedProxyUrl !== undefined) {
+  if (cachedProxyUrl !== undefined && Date.now() - cachedProxyAt < PROXY_CACHE_TTL_MS) {
     return cachedProxyUrl
   }
+  cachedProxyAt = Date.now()
   const envProxy =
     process.env.HTTPS_PROXY ||
     process.env.https_proxy ||
@@ -88,21 +126,79 @@ const resolveSystemProxy = () => {
 const readBody = (req) =>
   new Promise((resolve, reject) => {
     const chunks = []
-    req.on('data', (chunk) => chunks.push(chunk))
-    req.on('end', () => resolve(Buffer.concat(chunks)))
-    req.on('error', reject)
+    let total = 0
+    let done = false
+    req.on('data', (chunk) => {
+      if (done) {
+        return
+      }
+      total += chunk.length
+      if (total > MAX_BODY_BYTES) {
+        done = true
+        req.destroy()
+        reject(new Error('Request body too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (!done) {
+        done = true
+        resolve(Buffer.concat(chunks))
+      }
+    })
+    req.on('error', (err) => {
+      if (!done) {
+        done = true
+        reject(err)
+      }
+    })
   })
 
-const handleProxy = async (req, res) => {
-  const target = req.headers['x-proxy-target']
-  if (typeof target !== 'string' || !/^https?:\/\//i.test(target)) {
-    res.statusCode = 400
-    res.setHeader('x-local-proxy', '1')
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: { message: 'Missing or invalid x-proxy-target header' } }))
+const sendJsonError = (res, status, message) => {
+  if (res.writableEnded) {
     return
   }
-  const targetUrl = new URL(target)
+  if (!res.headersSent) {
+    res.statusCode = status
+    res.setHeader('x-local-proxy', '1')
+    res.setHeader('Content-Type', 'application/json')
+  }
+  res.end(JSON.stringify({ error: { message } }))
+}
+
+const handleProxy = async (req, res) => {
+  const originHeader = req.headers.origin
+  if (typeof originHeader === 'string' && originHeader !== 'null') {
+    try {
+      const originHost = new URL(originHeader).hostname.toLowerCase()
+      if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(originHost)) {
+        sendJsonError(res, 403, 'Forbidden proxy origin')
+        return
+      }
+    } catch {
+      sendJsonError(res, 403, 'Invalid proxy origin')
+      return
+    }
+  }
+
+  const target = req.headers['x-proxy-target']
+  if (typeof target !== 'string' || !/^https?:\/\//i.test(target)) {
+    sendJsonError(res, 400, 'Missing or invalid x-proxy-target header')
+    return
+  }
+  let targetUrl
+  try {
+    targetUrl = new URL(target)
+  } catch {
+    sendJsonError(res, 400, 'Invalid x-proxy-target URL')
+    return
+  }
+  if (isBlockedMetadataHost(targetUrl.hostname)) {
+    sendJsonError(res, 403, 'Blocked metadata target')
+    return
+  }
+
   const method = (req.method || 'GET').toUpperCase()
   const headers = {}
   for (const [key, value] of Object.entries(req.headers)) {
@@ -112,12 +208,23 @@ const handleProxy = async (req, res) => {
     }
     headers[key] = value
   }
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await readBody(req)
+  let body
+  if (method !== 'GET' && method !== 'HEAD') {
+    try {
+      body = await readBody(req)
+    } catch (err) {
+      sendJsonError(res, 413, err instanceof Error ? err.message : 'Invalid request body')
+      return
+    }
+  }
   if (body && body.length > 0) {
     headers['content-length'] = String(body.length)
   }
 
-  const proxyRaw = isLocalHost(targetUrl.hostname) ? null : resolveSystemProxy()
+  const proxyRaw =
+    isLocalHost(targetUrl.hostname) || matchesNoProxy(targetUrl.hostname)
+      ? null
+      : resolveSystemProxy()
   const isHttps = targetUrl.protocol === 'https:'
   const targetPort = Number(targetUrl.port || (isHttps ? 443 : 80))
 
@@ -135,17 +242,24 @@ const handleProxy = async (req, res) => {
       upstreamRes.on('end', () => res.end())
       upstreamRes.on('error', (err) => {
         if (!res.writableEnded) {
-          res.statusCode = 502
-          res.end(JSON.stringify({ error: { message: err.message } }))
+          if (!res.headersSent) {
+            sendJsonError(res, 502, err.message)
+          } else {
+            res.destroy(err)
+          }
         }
       })
     })
+    upstreamReq.setTimeout(120_000, () => {
+      upstreamReq.destroy(new Error('Upstream timeout'))
+    })
     upstreamReq.on('error', (err) => {
       if (!res.writableEnded) {
-        res.statusCode = 502
-        res.setHeader('x-local-proxy', '1')
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ error: { message: err.message } }))
+        if (!res.headersSent) {
+          sendJsonError(res, 502, err.message)
+        } else {
+          res.destroy(err)
+        }
       }
     })
     res.on('close', () => {
@@ -160,56 +274,74 @@ const handleProxy = async (req, res) => {
   }
 
   if (proxyRaw) {
-    const proxyUrl = new URL(proxyRaw)
+    let proxyUrl
+    try {
+      proxyUrl = new URL(proxyRaw)
+    } catch {
+      sendJsonError(res, 502, 'Invalid system proxy URL')
+      return
+    }
+    const proxyIsHttps = proxyUrl.protocol === 'https:'
+    const proxyPort = Number(proxyUrl.port || (proxyIsHttps ? 443 : 80))
+    const proxyAuth =
+      proxyUrl.username || proxyUrl.password
+        ? `Basic ${Buffer.from(
+            `${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`
+          ).toString('base64')}`
+        : null
+
     if (isHttps) {
-      const connectReq = http.request({
+      const connectTransport = proxyIsHttps ? https : http
+      const connectHeaders = proxyAuth ? { 'Proxy-Authorization': proxyAuth } : {}
+      const connectReq = connectTransport.request({
         hostname: proxyUrl.hostname,
-        port: Number(proxyUrl.port || 80),
+        port: proxyPort,
         method: 'CONNECT',
         path: `${targetUrl.hostname}:${targetPort}`,
+        headers: connectHeaders,
+      })
+      connectReq.setTimeout(15_000, () => {
+        connectReq.destroy(new Error('Proxy CONNECT timeout'))
+      })
+      res.on('close', () => {
+        if (!res.writableEnded) {
+          connectReq.destroy()
+        }
       })
       connectReq.on('connect', (connectRes, socket) => {
         if (connectRes.statusCode !== 200) {
           socket.destroy()
-          if (!res.writableEnded) {
-            res.statusCode = 502
-            res.setHeader('x-local-proxy', '1')
-            res.setHeader('Content-Type', 'application/json')
-            res.end(
-              JSON.stringify({
-                error: { message: `Proxy CONNECT failed (${connectRes.statusCode})` },
-              })
-            )
-          }
+          sendJsonError(res, 502, `Proxy CONNECT failed (${connectRes.statusCode})`)
           return
         }
+        const tlsSocket = tls.connect({ socket, servername: targetUrl.hostname })
+        const tunnelAgent = new https.Agent({ keepAlive: false })
+        tunnelAgent.createConnection = () => tlsSocket
         sendViaRequest({
           hostname: targetUrl.hostname,
           port: targetPort,
           path: `${targetUrl.pathname}${targetUrl.search}`,
           method,
           headers: { ...headers, host: targetUrl.host },
-          createConnection: () => socket,
-          agent: false,
+          agent: tunnelAgent,
         })
       })
       connectReq.on('error', (err) => {
-        if (!res.writableEnded) {
-          res.statusCode = 502
-          res.setHeader('x-local-proxy', '1')
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: { message: err.message } }))
-        }
+        sendJsonError(res, 502, err.message)
       })
       connectReq.end()
       return
     }
     sendViaRequest({
       hostname: proxyUrl.hostname,
-      port: Number(proxyUrl.port || 80),
+      port: proxyPort,
       path: targetUrl.toString(),
       method,
-      headers: { ...headers, host: targetUrl.host },
+      headers: {
+        ...headers,
+        host: targetUrl.host,
+        ...(proxyAuth ? { 'proxy-authorization': proxyAuth } : {}),
+      },
     })
     return
   }
@@ -224,14 +356,36 @@ const handleProxy = async (req, res) => {
 }
 
 const server = http.createServer((req, res) => {
-  const reqUrl = new URL(req.url || '/', `http://localhost:${port}`)
+  let reqUrl
+  try {
+    reqUrl = new URL(req.url || '/', `http://localhost:${port}`)
+  } catch {
+    res.statusCode = 400
+    res.end('Bad Request')
+    return
+  }
   if (reqUrl.pathname === '/__api_proxy__') {
-    void handleProxy(req, res)
+    void handleProxy(req, res).catch((err) => {
+      sendJsonError(res, 500, err instanceof Error ? err.message : 'Proxy internal error')
+    })
     return
   }
 
-  const safePath = path.normalize(reqUrl.pathname).replace(/^(\.\.(\/|\\|$))+/, '')
-  let filePath = path.join(distDir, safePath === '/' || safePath === '\\' ? 'index.html' : safePath)
+  let decodedPath = '/'
+  try {
+    decodedPath = decodeURIComponent(reqUrl.pathname)
+  } catch {
+    res.statusCode = 400
+    res.end('Bad Request')
+    return
+  }
+  const rel = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '')
+  let filePath = path.resolve(distDir, rel)
+  if (!filePath.startsWith(distDir + path.sep) && filePath !== distDir) {
+    res.statusCode = 403
+    res.end('Forbidden')
+    return
+  }
   if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
     filePath = path.join(distDir, 'index.html')
   }
@@ -242,9 +396,18 @@ const server = http.createServer((req, res) => {
   }
   const ext = path.extname(filePath).toLowerCase()
   res.setHeader('Content-Type', MIME_TYPES[ext] || 'application/octet-stream')
-  createReadStream(filePath).pipe(res)
+  const stream = createReadStream(filePath)
+  stream.on('error', () => {
+    if (!res.headersSent) {
+      res.statusCode = 500
+    }
+    if (!res.writableEnded) {
+      res.end('Read error')
+    }
+  })
+  stream.pipe(res)
 })
 
-server.listen(port, () => {
-  process.stdout.write(`Local deployment server running at http://localhost:${port}/\n`)
+server.listen(port, host, () => {
+  process.stdout.write(`Local deployment server running at http://${host}:${port}/\n`)
 })

@@ -121,7 +121,7 @@ const toolFragment = (tool: ServerToolUseBlock, result: ReplyBlock | undefined):
  * 引用改由正文外的来源表示，不写入标记；
  * 本轮调用过联网能力时，剥除模型原样输出的 [citation:N]。
  */
-const assistantFragments = (message: AssistantMessage): Fragment[] => {
+const assistantFragments = (message: AssistantMessage, exportImage: ExportImage): Fragment[] => {
   const { blocks } = message
   const results = new Map<string, ReplyBlock>()
   for (const block of blocks) {
@@ -142,6 +142,12 @@ const assistantFragments = (message: AssistantMessage): Fragment[] => {
       response.content += usedWeb ? block.text.replace(/\[citation:\d+\]/g, '') : block.text
       continue
     }
+    const imageExt =
+      block.type === 'image' && block.mimeType.includes('jpeg')
+        ? 'jpg'
+        : block.type === 'image' && block.mimeType.includes('webp')
+          ? 'webp'
+          : 'png'
     const converted: Fragment[] =
       block.type === 'thinking'
         ? block.thinking
@@ -157,9 +163,24 @@ const assistantFragments = (message: AssistantMessage): Fragment[] => {
               },
             ]
           : []
-        : block.type === 'server_tool_use'
-          ? toolFragment(block, results.get(block.id))
-          : []
+        : block.type === 'image' && block.fileId
+          ? [
+              {
+                type: 'GENERATED_IMAGE',
+                id: block.fileId,
+                export_path: exportImage({
+                  id: block.fileId,
+                  name: `generated.${imageExt}`,
+                  isImage: true,
+                }),
+                mime_type: block.mimeType,
+                ...(block.prompt ? { prompt: block.prompt } : {}),
+                ...(block.size ? { size: block.size } : {}),
+              },
+            ]
+          : block.type === 'server_tool_use'
+            ? toolFragment(block, results.get(block.id))
+            : []
     if (converted.length > 0) {
       fragments.push(...converted)
       response = undefined
@@ -252,14 +273,16 @@ export const toSessionFile = (original: Session, exportImage: ExportImage): Sess
       accumulated_token_usage: message.role === 'user' ? 0 : contextTokens(message),
       inserted_at: iso(message.createdAt),
       fragments:
-        message.role === 'user' ? userFragments(message, exportImage) : assistantFragments(message),
+        message.role === 'user'
+          ? userFragments(message, exportImage)
+          : assistantFragments(message, exportImage),
     }
   })
   const current = getVisibleMessages(session).at(-1)
   return {
     id: session.id,
     title: session.title || null,
-    pinned: false,
+    pinned: Boolean(session.pinnedAt),
     // 格式要求非空；空会话没有消息可指向，写 0。
     current_message_id: current ? id(current) : 0,
     inserted_at: iso(session.createdAt),
@@ -271,7 +294,7 @@ export const toSessionFile = (original: Session, exportImage: ExportImage): Sess
 export const toIndexEntry = (file: SessionFile): SessionIndexEntry => ({
   id: file.id,
   title: file.title,
-  pinned: false,
+  pinned: file.pinned,
   message_count: file.messages.length,
   inserted_at: file.inserted_at,
   updated_at: file.updated_at,

@@ -36,6 +36,28 @@
   padding-bottom: 24px;
 }
 
+.loadEarlierRow {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 6px;
+}
+
+.loadEarlierBtn {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-subtle);
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.loadEarlierBtn:hover {
+  background: var(--dsw-alias-fill-secondary);
+  color: var(--dsw-alias-label-primary);
+}
+
 .searchHighlight {
   border-radius: 14px;
   animation: searchHitFlash 1.8s ease-out;

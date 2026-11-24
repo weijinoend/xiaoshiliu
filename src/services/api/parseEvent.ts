@@ -1,3 +1,4 @@
+import { sanitizeWebUrl } from './origin.js'
 import type {
   ContentBlockDelta,
   MessageStreamEvent,
@@ -11,12 +12,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isString = (value: unknown): value is string => typeof value === 'string'
 const isOptionalString = (value: unknown) => value === undefined || isString(value)
 const isNullableString = (value: unknown) => value == null || isString(value)
+const isWebUrlString = (value: unknown): value is string => isString(value) && Boolean(sanitizeWebUrl(value))
 const isIndex = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0
 
 const isCitation = (value: unknown): value is TextCitation =>
   isRecord(value) &&
   value.type === 'web_search_result_location' &&
-  isString(value.url) &&
+  isWebUrlString(value.url) &&
   isNullableString(value.title)
 
 /** 只检查消费内容所需的字段，签名及服务端附带的信息保持原样。 */
@@ -102,7 +104,7 @@ const readBlock = (value: unknown): OutputBlockStart | null => {
           }
           return (
             item.type === 'web_search_result' &&
-            isString(item.url) &&
+            isWebUrlString(item.url) &&
             isString(item.title) &&
             isNullableString(item.snippet) &&
             isNullableString(item.site_name) &&

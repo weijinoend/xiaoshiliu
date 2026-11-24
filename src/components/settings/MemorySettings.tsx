@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import {
   addSavedMemory,
@@ -38,6 +38,10 @@ export const MemorySettings = () => {
   const [sessionFilter, setSessionFilter] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
+  const validLinkedCount = useMemo(() => {
+    const activeIds = new Set(sessions.map((s) => s.id))
+    return settings.crossChatMemorySessionIds.filter((id) => activeIds.has(id)).length
+  }, [sessions, settings.crossChatMemorySessionIds])
 
   const handleAdd = () => {
     if (addSavedMemory(newText)) {
@@ -228,12 +232,10 @@ export const MemorySettings = () => {
                 <div className={styles.linkedHeaderRow}>
                   <span className={styles.description}>
                     {t('crossChatLinkedTitle', {
-                      count: settings.crossChatMemorySessionIds.filter((id) =>
-                        sessions.some((s) => s.id === id)
-                      ).length,
+                      count: validLinkedCount,
                     })}
                   </span>
-                  {settings.crossChatMemorySessionIds.length > 0 ? (
+                  {validLinkedCount > 0 ? (
                     <Button
                       size="s"
                       variant="outlined"

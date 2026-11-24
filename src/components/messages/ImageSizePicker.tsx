@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { Select, type SelectOption } from '../base/Select.js'
 import styles from './AssistantMessage.module.css'
@@ -28,6 +29,15 @@ export const ImageSizePicker = ({
   const t = useTranslate()
   const normalized = value.trim() || (hasReference ? 'match' : 'auto')
   const isPreset = PRESETS.includes(normalized as (typeof PRESETS)[number])
+  const [customActive, setCustomActive] = useState(!isPreset)
+
+  useEffect(() => {
+    if (value.trim() && !PRESETS.includes(value.trim() as (typeof PRESETS)[number])) {
+      setCustomActive(true)
+    }
+  }, [value])
+
+  const showCustom = customActive || !isPreset
 
   const isEn = t('latestReminderLanguage') === 'English'
   const compactAuto = isEn ? 'Auto' : '自动'
@@ -64,21 +74,23 @@ export const ImageSizePicker = ({
   return (
     <div className={compact ? styles.sizePickerCompact : styles.sizePickerRow}>
       <Select
-        value={isPreset ? normalized : CUSTOM_VALUE}
+        value={showCustom ? CUSTOM_VALUE : normalized}
         options={options}
         ariaLabel={t('imageGenSizeLabel')}
         className={compact ? styles.sizeSelectCompact : undefined}
         onChange={(selected) => {
           if (selected === CUSTOM_VALUE) {
+            setCustomActive(true)
             if (isPreset) {
               onChange('1280x720')
             }
           } else {
+            setCustomActive(false)
             onChange(selected)
           }
         }}
       />
-      {!isPreset ? (
+      {showCustom ? (
         <input
           type="text"
           className={styles.sizeCustomInput}

@@ -14,8 +14,9 @@ const loadMermaid = () => {
   return mermaidPromise
 }
 
-/** 转义图片标签，对同一图中的全部标签生效。 */
-const sanitizeMermaid = (code: string) => code.replace(/<((?:img|image)\s+)/gi, '&lt;$1')
+/** 转义图片与脚本标签，覆盖空白或斜杠分隔属性（如 `<img/src=...>`）。 */
+const sanitizeMermaid = (code: string) =>
+  code.replace(/<(\/?(?:img|image|script|iframe|object|embed)(?=[\s/>]))/gi, '&lt;$1')
 
 /** 串行执行初始化和绘制，避免不同图表互相覆盖 Mermaid 的全局配置。 */
 export const renderMermaid = (

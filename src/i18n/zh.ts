@@ -436,6 +436,7 @@ export const zh = {
   avatarCropHint: '拖动图片调整位置，滑块缩放选区',
   avatarCropZoom: '缩放',
   avatarCropConfirm: '确认使用',
+  avatarCropLoadFailed: '图片加载失败，请重新选择图片',
   pinSession: '置顶会话',
   unpinSession: '取消置顶',
   sessionHistoryPinnedLabel: '置顶',
@@ -453,4 +454,5 @@ export const zh = {
   crossChatLinkedFilterPlaceholder: '按标题筛选会话…',
   crossChatLinkedClear: '清空已选',
   crossChatLinkedEmpty: '暂无可选会话',
+  loadEarlierMessages: '显示更早消息（还有 {count} 条）',
 } as const

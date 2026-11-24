@@ -46,7 +46,7 @@ const formatHitDate = (
   todayLabel: string,
   yesterdayLabel: string
 ) => {
-  const diff = Math.floor((startOfDay(now) - startOfDay(timestamp)) / DAY)
+  const diff = Math.round((startOfDay(now) - startOfDay(timestamp)) / DAY)
   if (diff <= 0) {
     return todayLabel
   }
@@ -129,26 +129,60 @@ const SearchOverlayContent = () => {
   }, [])
 
   useEffect(() => {
+    if (!searchBody) {
+      setScanning(false)
+      return
+    }
     let cancelled = false
-    setScanning(true)
-    void db
-      .loadAllSessions()
-      .then((list) => {
+    if (!allSessionsMap) {
+      setScanning(true)
+      void db
+        .loadAllSessions()
+        .then((list) => {
+          if (cancelled) {
+            return
+          }
+          setAllSessionsMap(new Map(list.map((item) => [item.id, item])))
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) {
+            setScanning(false)
+          }
+        })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const changed = sessions.filter(
+      (summary) =>
+        !Object.hasOwn(sessionCache, summary.id) &&
+        allSessionsMap.get(summary.id)?.updatedAt !== summary.updatedAt
+    )
+    if (changed.length === 0) {
+      return
+    }
+    void Promise.all(changed.map((summary) => db.loadSession(summary.id).catch(() => null))).then(
+      (loaded) => {
         if (cancelled) {
           return
         }
-        setAllSessionsMap(new Map(list.map((item) => [item.id, item])))
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setScanning(false)
-        }
-      })
+        setAllSessionsMap((prev) => {
+          const next = new Map(prev)
+          for (const item of loaded) {
+            if (item) {
+              next.set(item.id, item)
+            }
+          }
+          return next
+        })
+      }
+    )
     return () => {
       cancelled = true
     }
-  }, [sessions])
+  }, [searchBody, sessions, sessionCache, allSessionsMap])
 
   const trimmed = query.trim().toLowerCase()
 

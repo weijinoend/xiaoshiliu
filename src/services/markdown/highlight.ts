@@ -97,7 +97,8 @@ const aliases: Record<string, string> = {
 
 /** 支持高亮时返回 Prism 语言名，否则返回 null */
 export function getHighlightLang(infostring: string): string | null {
-  const lang = Object.hasOwn(aliases, infostring) ? aliases[infostring] : infostring
+  const normalized = infostring.trim().toLowerCase()
+  const lang = Object.hasOwn(aliases, normalized) ? aliases[normalized] : normalized
   return Object.hasOwn(loaders, lang) ? lang : null
 }
 

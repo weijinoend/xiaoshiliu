@@ -163,6 +163,17 @@ const readFragment: Read<Fragment> = (value) => {
       }
     case 'FILE':
       return { type, files: list(fileEntry)(item.files) }
+    case 'GENERATED_IMAGE':
+      return {
+        type,
+        id: string(item.id),
+        export_path: nullable(string)(item.export_path ?? null),
+        ...('mime_type' in item && item.mime_type !== undefined
+          ? { mime_type: string(item.mime_type) }
+          : {}),
+        ...('prompt' in item && item.prompt !== undefined ? { prompt: string(item.prompt) } : {}),
+        ...('size' in item && item.size !== undefined ? { size: string(item.size) } : {}),
+      }
     case 'TOOL_IMAGE_SEARCH':
       return {
         type,
@@ -242,7 +253,7 @@ export const readSessionIndex: Read<SessionIndexEntry[]> = list((value) => {
   return {
     id: sessionId(item.id),
     title: nullable(string)(item.title),
-    pinned: false,
+    pinned: item.pinned === true,
     message_count: count(item.message_count),
     inserted_at: time(item.inserted_at),
     updated_at: time(item.updated_at),
@@ -254,7 +265,7 @@ export const readSessionFile: Read<SessionFile> = (value) => {
   return {
     id: sessionId(item.id),
     title: nullable(string)(item.title),
-    pinned: false,
+    pinned: item.pinned === true,
     current_message_id: nullable(count)(item.current_message_id ?? null) ?? 0,
     inserted_at: time(item.inserted_at),
     updated_at: time(item.updated_at),

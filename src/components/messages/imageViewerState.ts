@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 export type ImageViewerPayload = {
   src: string
+  fileId?: string
   alt?: string
   filename?: string
 }

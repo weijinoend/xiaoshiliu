@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { showToast } from '../components/base/toastState.js'
-import { fetchWithDevProxy } from './api/origin.js'
+import { fetchWithDevProxy, sanitizeWebUrl } from './api/origin.js'
 
 export const GITHUB_REPO = 'YanJiuWeiYuanHui/DeepChat'
 export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}`
@@ -205,6 +205,29 @@ const syncAndroidDownloadState = () => {
   }
 }
 
+const isAllowedApkUrl = (raw: string | null | undefined): string | null => {
+  const clean = sanitizeWebUrl(raw)
+  if (!clean) {
+    return null
+  }
+  try {
+    const parsed = new URL(clean)
+    if (parsed.protocol !== 'https:') {
+      return null
+    }
+    const host = parsed.hostname.toLowerCase()
+    if (
+      host === 'github.com' ||
+      host === 'objects.githubusercontent.com' ||
+      host.endsWith('.githubusercontent.com')
+    ) {
+      return parsed.toString()
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 const parseGitHubRelease = (raw: unknown): ReleaseInfo | null => {
   if (typeof raw !== 'object' || raw === null) {
     return null
@@ -223,20 +246,22 @@ const parseGitHubRelease = (raw: unknown): ReleaseInfo | null => {
       typeof (item as Record<string, unknown>).name === 'string' &&
       ((item as Record<string, unknown>).name as string).toLowerCase().endsWith('.apk')
   )
+  const htmlUrl =
+    typeof obj.html_url === 'string'
+      ? (sanitizeWebUrl(obj.html_url) ?? GITHUB_RELEASES_URL)
+      : GITHUB_RELEASES_URL
+  const apkUrl =
+    apkAsset && typeof apkAsset.browser_download_url === 'string'
+      ? isAllowedApkUrl(apkAsset.browser_download_url)
+      : null
   return {
     version,
     tagName,
     title: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : `v${version}`,
     body: typeof obj.body === 'string' ? obj.body.trim() : '',
     publishedAt: typeof obj.published_at === 'string' ? obj.published_at : '',
-    htmlUrl:
-      typeof obj.html_url === 'string' && obj.html_url.trim()
-        ? obj.html_url.trim()
-        : GITHUB_RELEASES_URL,
-    apkUrl:
-      apkAsset && typeof apkAsset.browser_download_url === 'string'
-        ? apkAsset.browser_download_url
-        : null,
+    htmlUrl,
+    apkUrl,
     apkName: apkAsset && typeof apkAsset.name === 'string' ? apkAsset.name : null,
     apkSize: apkAsset && typeof apkAsset.size === 'number' ? apkAsset.size : null,
   }
@@ -314,6 +339,11 @@ export const checkForUpdates = async ({ manual = false } = {}): Promise<void> =>
 export const openUpdateModal = () => {
   if (useUpdater.getState().latest) {
     useUpdater.setState({ modalOpen: true })
+    if (useUpdater.getState().download.status === 'downloading') {
+      syncAndroidDownloadState()
+      stopPollingDownload()
+      pollTimer = window.setInterval(syncAndroidDownloadState, 250)
+    }
   }
 }
 
@@ -331,7 +361,10 @@ export const skipReleaseVersion = (version: string) => {
 export const clearSkippedReleaseVersion = () => writeSkippedVersion('')
 
 export const openReleaseInBrowser = (url?: string | null) => {
-  const target = url || useUpdater.getState().latest?.htmlUrl || GITHUB_RELEASES_URL
+  const target =
+    sanitizeWebUrl(url) ||
+    sanitizeWebUrl(useUpdater.getState().latest?.htmlUrl) ||
+    GITHUB_RELEASES_URL
   window.open(target, '_blank', 'noopener,noreferrer')
 }
 

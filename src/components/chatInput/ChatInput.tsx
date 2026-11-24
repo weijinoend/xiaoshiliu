@@ -55,6 +55,7 @@ import { ensureApiKey, openSettings } from '../settings/settingsDialogState.js'
 import { DragMask, useFileDrop } from './DragMask.js'
 import { showToast } from '../base/toastState.js'
 import { ACCEPT, useUploads } from '../../services/attachments.js'
+import { getAndroidProxyOrigin, getAndroidProxyToken } from '../../services/api/origin.js'
 import { DraftAttachments } from './DraftAttachments.js'
 import { ImageSizePicker } from '../messages/ImageSizePicker.js'
 import { useVoiceInput } from './useVoiceInput.js'
@@ -101,8 +102,10 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const holdCancellingRef = useRef(false)
   const voiceHoldPendingRef = useRef(false)
   const voiceHoldActiveRef = useRef(false)
+  const voiceHoldCleanupRef = useRef<(() => void) | null>(null)
   const pendingVoiceAutoSendRef = useRef(false)
   const sendLatestRef = useRef<() => void>(() => {})
+  const acceptFilesRef = useRef<(files: File[]) => void>(() => {})
   const textareaWrapperRef = useRef<HTMLDivElement>(null)
 
   const effortOptions: ThinkingEffort[] =
@@ -195,6 +198,101 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     if (error) {
       showToast(error)
     }
+  }
+  acceptFilesRef.current = acceptFiles
+
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') {
+      return
+    }
+    const viewport = window.visualViewport
+    if (!viewport) {
+      return
+    }
+    let baselineHeight = Math.max(window.innerHeight, viewport.height)
+    let keyboardWasOpen = false
+    const onViewportResize = () => {
+      const currentHeight = viewport.height
+      if (currentHeight > baselineHeight) {
+        baselineHeight = currentHeight
+      }
+      if (baselineHeight - currentHeight > 120) {
+        keyboardWasOpen = true
+        return
+      }
+      if (keyboardWasOpen && baselineHeight - currentHeight < 40) {
+        keyboardWasOpen = false
+        if (
+          document.activeElement === textareaRef.current &&
+          getDraft(sessionId).text.length === 0
+        ) {
+          textareaRef.current?.blur()
+        }
+      }
+    }
+    viewport.addEventListener('resize', onViewportResize)
+    return () => viewport.removeEventListener('resize', onViewportResize)
+  }, [isMobile, sessionId])
+
+  useEffect(
+    () => () => {
+      voiceHoldCleanupRef.current?.()
+      if (thinkLongPressTimerRef.current !== null) {
+        window.clearTimeout(thinkLongPressTimerRef.current)
+        thinkLongPressTimerRef.current = null
+      }
+    },
+    []
+  )
+
+  const handleCameraClick = () => {
+    const {
+      imageGen: isImageGen,
+      imageGenChannel: imgChannel,
+      customHeaders,
+    } = useSettings.getState()
+    const hasCustomAuth =
+      isImageGen &&
+      imageGenReady &&
+      Boolean(imgChannel.apiKey.trim() || imgChannel.customHeaders.trim() || customHeaders.trim())
+    if (!hasCustomAuth && !ensureApiKey()) {
+      return
+    }
+    const bridge = (
+      window as {
+        __DEEPJEEK_ANDROID_BRIDGE__?: { capturePhoto?: () => boolean }
+        __deepjeekOnNativePhoto?: (photoId: string, fileName: string) => void
+      }
+    ).__DEEPJEEK_ANDROID_BRIDGE__
+    const androidProxy = getAndroidProxyOrigin()
+    if (bridge?.capturePhoto && androidProxy) {
+      ;(
+        window as { __deepjeekOnNativePhoto?: (photoId: string, fileName: string) => void }
+      ).__deepjeekOnNativePhoto = (photoId: string, fileName: string) => {
+        const token = getAndroidProxyToken()
+        void fetch(`${androidProxy}/__deepjeek_captured_photo?id=${encodeURIComponent(photoId)}`, {
+          headers: token ? { 'X-Proxy-Token': token } : {},
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}`)
+            }
+            const blob = await res.blob()
+            const file = new File([blob], fileName || `photo-${Date.now()}.jpg`, {
+              type: blob.type || 'image/jpeg',
+            })
+            acceptFilesRef.current([file])
+            setPlusOpen(false)
+          })
+          .catch(() => {
+            showToast({ key: 'voiceCallCameraFailed' })
+          })
+      }
+      if (bridge.capturePhoto()) {
+        return
+      }
+    }
+    cameraInputRef.current?.click()
   }
   const retryFile = useCallback(
     (id: string) => {
@@ -292,22 +390,26 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   }
   sendLatestRef.current = send
 
-  // 长按输入框语音输入：按住 340ms 开启录音 + 波形动画，上滑取消，松开识别
+  // 长按输入框语音输入：仅在文本框未聚焦且为空时按住 340ms 开启录音，确保点开文本框或已有文字时长按复制/粘贴完全正常
   const startVoiceHold = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (
       event.button !== 0 ||
       !voice.available ||
       voice.status !== 'idle' ||
       useChatStore.getState().importingHistory ||
-      streaming
+      streaming ||
+      document.activeElement === textareaRef.current ||
+      getDraft(sessionId).text.length > 0
     ) {
       return
     }
+    voiceHoldCleanupRef.current?.()
     const wrapperEl = event.currentTarget
     const pointerId = event.pointerId
     const startX = event.clientX
     const startY = event.clientY
     let activated = false
+    let cleaned = false
     voiceHoldPendingRef.current = true
     holdCancellingRef.current = false
     setHoldCancelling(false)
@@ -319,7 +421,13 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     }
 
     const clearListeners = () => {
+      if (cleaned) {
+        return
+      }
+      cleaned = true
       voiceHoldPendingRef.current = false
+      voiceHoldActiveRef.current = false
+      voiceHoldCleanupRef.current = null
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerCancel)
@@ -334,7 +442,11 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     }
 
     const timer = window.setTimeout(() => {
-      if (useChatStore.getState().importingHistory || !ensureApiKey()) {
+      const { asrChannel, customHeaders } = useSettings.getState()
+      const hasAsrAuth =
+        asrChannel.mode === 'custom' &&
+        Boolean(asrChannel.apiKey.trim() || asrChannel.baseUrl.trim() || customHeaders.trim())
+      if (useChatStore.getState().importingHistory || (!hasAsrAuth && !ensureApiKey())) {
         clearListeners()
         return
       }
@@ -351,6 +463,11 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       }
       void voice.start()
     }, 340)
+
+    voiceHoldCleanupRef.current = () => {
+      window.clearTimeout(timer)
+      clearListeners()
+    }
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) {
@@ -376,7 +493,6 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       if (!activated) {
         return
       }
-      voiceHoldActiveRef.current = false
       const cancelVoiceInput = shouldCancel || holdCancellingRef.current
       holdCancellingRef.current = false
       setHoldCancelling(false)
@@ -458,8 +574,12 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
                 : t('chatInputPlaceholderChat')
             }
             rows={2}
-            // 移动端不自动聚焦，避免一打开就弹出键盘
-            autoFocus={!isMobile}
+            // 仅桌面端精细指针设备自动聚焦，避免触屏/平板一打开就弹出键盘或锁定长按语音
+            autoFocus={
+              !isMobile &&
+              typeof window !== 'undefined' &&
+              window.matchMedia('(hover: hover) and (pointer: fine)').matches
+            }
             disabled={importingHistory}
             value={text}
             onChange={(event) => setText(event.target.value)}
@@ -753,7 +873,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               className={styles.moreCard}
               tabIndex={plusOpen ? 0 : -1}
               disabled={importingHistory}
-              onClick={() => openPicker(cameraInputRef)}
+              onClick={handleCameraClick}
             >
               <IconCameraOutline22 />
               <span>{t('chatInputTakePhoto')}</span>

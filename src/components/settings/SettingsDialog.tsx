@@ -106,8 +106,8 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
 const SettingsContent = () => {
   const t = useTranslate()
   const isMobile = useIsMobile()
-  // 打开时按调用方指定的分组选中，之后在弹窗内切换
-  const [section, setSection] = useState(() => useSettingsDialog.getState().section)
+  // 按 store 中的分组选中，支持在弹窗已打开时由外部跳转到指定分组
+  const section = useSettingsDialog((state) => state.section)
   // 切换分组不丢失正在输入的 API Key 与导入状态
   const apiKeyEditor = useApiKeyEditor()
   const historyImport = useHistoryImport()
@@ -135,7 +135,7 @@ const SettingsContent = () => {
               role="tab"
               aria-selected={section === item.value}
               className={clsx(styles.navItem, section === item.value && styles.navItemActive)}
-              onClick={() => setSection(item.value)}
+              onClick={() => useSettingsDialog.setState({ section: item.value })}
             >
               {item.icon}
               {t(item.label)}

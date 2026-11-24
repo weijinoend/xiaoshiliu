@@ -1,6 +1,7 @@
 import clsx from 'clsx'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { registerAndroidBackHandler } from '../../app/androidBack.js'
 import { useAnchoredPosition, useDismiss } from './anchored.js'
 import { IconCheckOutline16, IconChevronDownOutline14 } from './icons.js'
 import styles from './Select.module.css'
@@ -34,24 +35,39 @@ export const Select = <T extends string>({
   disabled?: boolean
 }) => {
   const [open, setOpen] = useState(false)
+  const effectiveOpen = open && !disabled
+  useEffect(() => {
+    if (disabled && open) {
+      setOpen(false)
+    }
+  }, [disabled, open])
+  useEffect(() => {
+    if (!effectiveOpen) {
+      return
+    }
+    return registerAndroidBackHandler(100, () => {
+      setOpen(false)
+      return true
+    })
+  }, [effectiveOpen])
   const current = options.find((option) => option.value === value)
   // 菜单贴右侧展开，最多 320px 高，超出在菜单内滚动
   const { anchorRef, floatingRef, position } = useAnchoredPosition<
     HTMLButtonElement,
     HTMLDivElement
-  >(open, { align: 'end', maxHeight: 320, minSpace: 160 })
+  >(effectiveOpen, { align: 'end', maxHeight: 320, minSpace: 160 })
   // Esc 只关菜单，不让外层弹窗一起关闭
-  useDismiss(open, [anchorRef, floatingRef], () => setOpen(false), { captureEscape: true })
+  useDismiss(effectiveOpen, [anchorRef, floatingRef], () => setOpen(false), { captureEscape: true })
 
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
-        className={clsx(styles.trigger, open && styles.open, className)}
+        className={clsx(styles.trigger, effectiveOpen && styles.open, className)}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
-        aria-expanded={open}
+        aria-expanded={effectiveOpen}
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
       >
@@ -64,7 +80,7 @@ export const Select = <T extends string>({
           <IconChevronDownOutline14 />
         </span>
       </button>
-      {open && !disabled
+      {effectiveOpen
         ? createPortal(
             <div
               ref={floatingRef}
@@ -77,12 +93,20 @@ export const Select = <T extends string>({
                 <div
                   key={option.value}
                   role="option"
+                  tabIndex={0}
                   lang={option.lang}
                   aria-selected={option.value === value}
                   className={styles.option}
                   onClick={() => {
                     setOpen(false)
                     onChange(option.value)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setOpen(false)
+                      onChange(option.value)
+                    }
                   }}
                 >
                   <span>{option.label}</span>

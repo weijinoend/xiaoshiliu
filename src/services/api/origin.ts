@@ -68,6 +68,18 @@ export const parseCustomHeaders = (raw: string): Record<string, string> => {
   return result
 }
 
+export const sanitizeWebUrl = (url: string | null | undefined): string | undefined => {
+  if (!url) {
+    return undefined
+  }
+  try {
+    const parsed = new URL(url.trim())
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export const getAndroidProxyOrigin = (): string | null => {
   if (typeof window === 'undefined') {
     return null
@@ -76,6 +88,16 @@ export const getAndroidProxyOrigin = (): string | null => {
     .__DEEPJEEK_ANDROID_BRIDGE__
   const origin = bridge?.getProxyOrigin?.()
   return origin && /^http:\/\/127\.0\.0\.1:\d+$/i.test(origin) ? origin : null
+}
+
+export const getAndroidProxyToken = (): string | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const bridge = (window as { __DEEPJEEK_ANDROID_BRIDGE__?: { getProxyToken?: () => string } })
+    .__DEEPJEEK_ANDROID_BRIDGE__
+  const token = bridge?.getProxyToken?.()
+  return token && token.trim() ? token.trim() : null
 }
 
 const shouldTryLocalProxy = (): boolean => {
@@ -105,6 +127,10 @@ export const fetchWithDevProxy = async (url: string, init: RequestInit = {}): Pr
     const headers = new Headers(init.headers)
     headers.set('x-proxy-target', url)
     const androidProxyOrigin = getAndroidProxyOrigin()
+    const proxyToken = getAndroidProxyToken()
+    if (androidProxyOrigin && proxyToken) {
+      headers.set('X-Proxy-Token', proxyToken)
+    }
     const proxyEndpoint = androidProxyOrigin
       ? `${androidProxyOrigin}/__api_proxy__`
       : '/__api_proxy__'

@@ -26,6 +26,7 @@ export const AvatarCropModal = ({
   const t = useTranslate()
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const imgRef = useRef<HTMLImageElement | null>(null)
@@ -43,6 +44,7 @@ export const AvatarCropModal = ({
     setZoom(1)
     setPan({ x: 0, y: 0 })
     setNaturalSize(null)
+    setLoadError(false)
     return () => {
       URL.revokeObjectURL(url)
     }
@@ -118,7 +120,7 @@ export const AvatarCropModal = ({
           <Button variant="outlined" onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button disabled={!naturalSize} onClick={handleConfirm}>
+          <Button disabled={!naturalSize || loadError} onClick={handleConfirm}>
             {t('avatarCropConfirm')}
           </Button>
         </>
@@ -132,7 +134,7 @@ export const AvatarCropModal = ({
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          {imageUrl ? (
+          {imageUrl && !loadError ? (
             <img
               ref={imgRef}
               src={imageUrl}
@@ -145,10 +147,15 @@ export const AvatarCropModal = ({
               }}
               onLoad={(event) => {
                 const target = event.currentTarget
+                setLoadError(false)
                 setNaturalSize({
                   w: target.naturalWidth || target.width,
                   h: target.naturalHeight || target.height,
                 })
+              }}
+              onError={() => {
+                setLoadError(true)
+                setNaturalSize(null)
               }}
             />
           ) : null}
@@ -161,7 +168,9 @@ export const AvatarCropModal = ({
           />
         </div>
         <div className={styles.cropControls}>
-          <span className={styles.cropHint}>{t('avatarCropHint')}</span>
+          <span className={styles.cropHint}>
+            {loadError ? t('avatarCropLoadFailed') : t('avatarCropHint')}
+          </span>
           <label className={styles.cropSliderRow}>
             <span>{t('avatarCropZoom')}</span>
             <input
@@ -172,6 +181,16 @@ export const AvatarCropModal = ({
               value={zoom}
               onChange={(event) => {
                 const nextZoom = Number(event.target.value)
+                if (naturalSize) {
+                  const nextDrawnW = naturalSize.w * baseScale * nextZoom
+                  const nextDrawnH = naturalSize.h * baseScale * nextZoom
+                  const nextMaxPanX = Math.max(0, (nextDrawnW - VIEWPORT_SIZE) / 2)
+                  const nextMaxPanY = Math.max(0, (nextDrawnH - VIEWPORT_SIZE) / 2)
+                  setPan((prev) => ({
+                    x: clamp(prev.x, -nextMaxPanX, nextMaxPanX),
+                    y: clamp(prev.y, -nextMaxPanY, nextMaxPanY),
+                  }))
+                }
                 setZoom(nextZoom)
               }}
             />

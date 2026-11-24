@@ -1,6 +1,6 @@
 import { formatDate } from '../../utils/format.js'
 import { getVisibleMessages } from './branches.js'
-import { loadAllSessions } from './db.js'
+import { loadSession } from './db.js'
 import { getContextRounds, getReplyText } from './reply.js'
 import type { Session, SessionSummary } from './types.js'
 
@@ -9,6 +9,9 @@ const USER_SNIPPET_MAX = 220
 const ASSISTANT_SNIPPET_MAX = 360
 const MAX_ROUNDS_PER_SESSION = 2
 const RECENT_FALLBACK_LIMIT = 3
+const MAX_CANDIDATE_SESSIONS = 60
+const MAX_INDEXED_ROUNDS_PER_SESSION = 24
+const MAX_TOKENIZE_CHARS = 1200
 
 const STOP_WORDS = new Set([
   'the',
@@ -156,7 +159,7 @@ const clipSnippet = (text: string, maxLength: number, queryTokens: Set<string>):
 
 const indexSession = (session: Session, allowRefused: boolean): IndexedSession => {
   const visible = getVisibleMessages(session)
-  const pairs = getContextRounds(visible, allowRefused)
+  const pairs = getContextRounds(visible, allowRefused).slice(-MAX_INDEXED_ROUNDS_PER_SESSION)
   const title = session.title.trim()
   const titleTokens = tokenize(title)
   const allTokens = new Set<string>(titleTokens)
@@ -168,7 +171,9 @@ const indexSession = (session: Session, allowRefused: boolean): IndexedSession =
     if (!userText && !assistantText) {
       continue
     }
-    const tokens = tokenize(`${userText}\n${assistantText}`)
+    const tokens = tokenize(
+      `${userText.slice(0, MAX_TOKENIZE_CHARS)}\n${assistantText.slice(0, MAX_TOKENIZE_CHARS)}`
+    )
     for (const token of tokens) {
       allTokens.add(token)
     }
@@ -246,15 +251,21 @@ export const buildCrossChatMemory = async ({
   }
 
   const selectedFilter = scope === 'selected' ? new Set(selectedSessionIds) : null
-  const candidates = sessions.filter(
+  const allCandidates = sessions.filter(
     (item) => item.id !== currentSessionId && (!selectedFilter || selectedFilter.has(item.id))
   )
+  const candidates =
+    scope === 'selected'
+      ? allCandidates
+      : [...allCandidates]
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .slice(0, MAX_CANDIDATE_SESSIONS)
   if (candidates.length === 0 || maxSessions <= 0) {
     return ''
   }
 
-  // 优先复用内存缓存，仅在存在缺失或更新过的离线会话时读取 IndexedDB。
-  let needsDbLoad = false
+  // 优先复用内存缓存，仅按需逐条读取缺失或更新过的候选会话，避免超大库下 loadAllSessions 卡死或内存溢出。
+  const missingIds: string[] = []
   for (const summary of candidates) {
     const inMemory = Object.hasOwn(sessionCache, summary.id) ? sessionCache[summary.id] : undefined
     if (inMemory) {
@@ -270,27 +281,20 @@ export const buildCrossChatMemory = async ({
     }
     const cached = sessionIndexCache.get(summary.id)
     if (!cached || cached.updatedAt !== summary.updatedAt || cached.allowRefused !== allowRefused) {
-      needsDbLoad = true
+      missingIds.push(summary.id)
     }
   }
 
-  if (needsDbLoad) {
-    const stored = await loadAllSessions()
+  for (const id of missingIds) {
     if (signal?.aborted) {
       return ''
     }
-    for (const session of stored) {
-      if (session.id === currentSessionId || !activeIds.has(session.id)) {
-        continue
-      }
-      const existing = sessionIndexCache.get(session.id)
-      if (
-        !existing ||
-        existing.updatedAt !== session.updatedAt ||
-        existing.allowRefused !== allowRefused
-      ) {
-        sessionIndexCache.set(session.id, indexSession(session, allowRefused))
-      }
+    const session = await loadSession(id)
+    if (signal?.aborted) {
+      return ''
+    }
+    if (session && session.id !== currentSessionId && activeIds.has(session.id)) {
+      sessionIndexCache.set(session.id, indexSession(session, allowRefused))
     }
   }
 

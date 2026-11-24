@@ -67,13 +67,15 @@ export const GeneratedImage = ({
     }
     let active = true
     let objectUrl: string | null = null
-    void loadFile(block.fileId).then((blob) => {
-      if (!active || !blob) {
-        return
-      }
-      objectUrl = URL.createObjectURL(blob)
-      setUrl(objectUrl)
-    })
+    void loadFile(block.fileId)
+      .then((blob) => {
+        if (!active || !blob) {
+          return
+        }
+        objectUrl = URL.createObjectURL(blob)
+        setUrl(objectUrl)
+      })
+      .catch(() => {})
     return () => {
       active = false
       if (objectUrl) {
@@ -177,6 +179,7 @@ export const GeneratedImage = ({
         onClick={() =>
           openImageViewer({
             src: url,
+            fileId: block.fileId,
             alt: block.prompt ?? 'Generated image',
             filename: `generated-${block.fileId.slice(0, 8)}.${ext}`,
           })

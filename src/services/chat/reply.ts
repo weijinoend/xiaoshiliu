@@ -370,6 +370,26 @@ export type RequestMessageSource =
   | { kind: 'currentQuestion' }
   | { kind: 'prefix' }
 
+const MAX_HISTORY_ROUNDS = 120
+const MAX_HISTORY_CHARS = 240_000
+
+const estimateParamChars = (param: MessageParam): number => {
+  if (typeof param.content === 'string') {
+    return param.content.length
+  }
+  let total = 0
+  for (const block of param.content) {
+    if (block.type === 'text') {
+      total += block.text.length
+    } else if (block.type === 'thinking') {
+      total += block.thinking.length
+    } else {
+      total += 256
+    }
+  }
+  return total
+}
+
 export const toRequestMessagesWithSources = (
   history: Message[],
   question: UserMessage,
@@ -384,25 +404,22 @@ export const toRequestMessagesWithSources = (
   sourceEntries: RequestMessageSource[]
   roundCount: number
 } => {
-  const messages: MessageParam[] = []
-  const sourceEntries: RequestMessageSource[] = []
-  let previousReminder: string | undefined
-  const appendReminder = (reminder: string | undefined) => {
-    // 仅在当前分支首次出现或内容变化时插入快照；缺少快照的消息保持原有内容。
-    if (reminder && reminder !== previousReminder) {
-      messages.push({ role: 'latest_reminder', content: reminder })
-      sourceEntries.push({ kind: 'reminder' })
-      previousReminder = reminder
-    }
-  }
-  const allRounds = getContextRounds(history, allowRefused).slice(
-    Math.max(0, options?.dropLeadingRounds ?? 0)
+  const allRounds = getContextRounds(history, allowRefused).filter(
+    ([user]) => !options?.skipRoundUserIds?.has(user.id)
   )
-  let roundCount = 0
-  for (const [user, reply] of allRounds) {
-    if (options?.skipRoundUserIds?.has(user.id)) {
-      continue
-    }
+
+  type BuiltRound = {
+    reminder?: string
+    userParam: MessageParam
+    assistantParam: Extract<MessageParam, { role: 'assistant' }>
+    userSource: RequestMessageSource
+    assistantSource: RequestMessageSource
+    chars: number
+  }
+  const pickedReversed: BuiltRound[] = []
+  let totalChars = 0
+  for (let i = allRounds.length - 1; i >= 0 && pickedReversed.length < MAX_HISTORY_ROUNDS; i--) {
+    const [user, reply] = allRounds[i]
     const builtUser = toUserParam(user, useLocalFileId, options?.skipFileIds)
     // 历史提问没有文字也没有可用内容块时，连同回答一起省略。
     if (!builtUser.param.content) {
@@ -417,14 +434,44 @@ export const toRequestMessagesWithSources = (
     if (assistantParam.content.length === 0) {
       continue
     }
-    appendReminder(reply.latestReminder)
-    messages.push(builtUser.param, assistantParam)
-    sourceEntries.push(
-      { kind: 'historyUser', userMessageId: user.id, sentFiles: builtUser.sentFiles },
-      { kind: 'historyAssistant', userMessageId: user.id, assistantMessageId: reply.id }
-    )
-    roundCount += 1
+    const chars = estimateParamChars(builtUser.param) + estimateParamChars(assistantParam)
+    if (pickedReversed.length > 0 && totalChars + chars > MAX_HISTORY_CHARS) {
+      break
+    }
+    totalChars += chars
+    pickedReversed.push({
+      reminder: reply.latestReminder,
+      userParam: builtUser.param,
+      assistantParam,
+      userSource: { kind: 'historyUser', userMessageId: user.id, sentFiles: builtUser.sentFiles },
+      assistantSource: {
+        kind: 'historyAssistant',
+        userMessageId: user.id,
+        assistantMessageId: reply.id,
+      },
+      chars,
+    })
   }
+  const dropLeading = Math.max(0, options?.dropLeadingRounds ?? 0)
+  const selectedRounds = pickedReversed.reverse().slice(dropLeading)
+
+  const messages: MessageParam[] = []
+  const sourceEntries: RequestMessageSource[] = []
+  let previousReminder: string | undefined
+  const appendReminder = (reminder: string | undefined) => {
+    // 仅在当前分支首次出现或内容变化时插入快照；缺少快照的消息保持原有内容。
+    if (reminder && reminder !== previousReminder) {
+      messages.push({ role: 'latest_reminder', content: reminder })
+      sourceEntries.push({ kind: 'reminder' })
+      previousReminder = reminder
+    }
+  }
+  for (const round of selectedRounds) {
+    appendReminder(round.reminder)
+    messages.push(round.userParam, round.assistantParam)
+    sourceEntries.push(round.userSource, round.assistantSource)
+  }
+  const roundCount = selectedRounds.length
   appendReminder(latestReminder)
   messages.push(toUserParam(question, useLocalFileId).param)
   sourceEntries.push({ kind: 'currentQuestion' })

@@ -42,15 +42,30 @@ export const useFileDrop = (onDrop: (files: File[]) => void) => {
       setDragging(false)
       onDropRef.current(Array.from(event.dataTransfer?.files ?? []))
     }
+    const reset = () => {
+      depth = 0
+      setDragging(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        reset()
+      }
+    }
     document.addEventListener('dragenter', enter)
     document.addEventListener('dragleave', leave)
     document.addEventListener('dragover', over)
     document.addEventListener('drop', drop)
+    document.addEventListener('dragend', reset)
+    window.addEventListener('blur', reset)
+    document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('dragenter', enter)
       document.removeEventListener('dragleave', leave)
       document.removeEventListener('dragover', over)
       document.removeEventListener('drop', drop)
+      document.removeEventListener('dragend', reset)
+      window.removeEventListener('blur', reset)
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [])
   return dragging

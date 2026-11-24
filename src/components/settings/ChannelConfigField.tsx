@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { fetchAvailableModels } from '../../services/api/models.js'
 import type {
@@ -32,21 +32,44 @@ export const ModelFetcherInput = ({
   const [models, setModels] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
+  const valueRef = useRef(value)
+  valueRef.current = value
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      controllerRef.current?.abort()
+    }
+  }, [])
 
   const handleFetch = async () => {
     if (loading) {
       return
     }
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
     setLoading(true)
     setStatus(null)
     try {
-      const list = await fetchAvailableModels(baseUrl, apiKey, undefined, customHeaders)
+      const list = await fetchAvailableModels(baseUrl, apiKey, controller.signal, customHeaders)
+      if (!mountedRef.current || controller.signal.aborted) {
+        return
+      }
       setModels(list)
       setStatus({ text: t('fetchModelsSuccess', { count: list.length }) })
-      if (!value.trim() && list.length > 0) {
-        onChange(list[0])
+      if (!valueRef.current.trim() && list.length > 0) {
+        onChangeRef.current(list[0])
       }
     } catch (error) {
+      if (!mountedRef.current || controller.signal.aborted) {
+        return
+      }
       setStatus({
         text: t('fetchModelsFailed', {
           message: error instanceof Error ? error.message : String(error),
@@ -54,7 +77,9 @@ export const ModelFetcherInput = ({
         error: true,
       })
     } finally {
-      setLoading(false)
+      if (mountedRef.current && controllerRef.current === controller) {
+        setLoading(false)
+      }
     }
   }
 
