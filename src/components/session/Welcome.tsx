@@ -26,20 +26,22 @@ export const Welcome = () => {
     <div className={styles.container}>
       {isMobile ? <MobileHeader /> : null}
       <div className={styles.welcome}>
-        <div className={styles.hero}>
-          <div className={styles.brandMarkFrame}>
-            <img
-              className={styles.brandMark}
-              src={poseByMode[replyMode] ?? brandUrl}
-              alt={t('appName')}
-            />
-          </div>
-          <div className={styles.brandName}>{t('appName')}</div>
-          <div className={styles.tagline}>{t('appTagline')}</div>
-          <div className={styles.featureRow}>
-            <span>{t('heroFeatureChat')}</span>
-            <span>{t('heroFeatureImage')}</span>
-            <span>{t('heroFeatureLocal')}</span>
+        <div className={styles.heroArea}>
+          <div className={styles.hero}>
+            <div className={styles.brandMarkFrame}>
+              <img
+                className={styles.brandMark}
+                src={poseByMode[replyMode] ?? brandUrl}
+                alt={t('appName')}
+              />
+            </div>
+            <div className={styles.brandName}>{t('appName')}</div>
+            <div className={styles.tagline}>{t('appTagline')}</div>
+            <div className={styles.featureRow}>
+              <span>{t('heroFeatureChat')}</span>
+              <span>{t('heroFeatureImage')}</span>
+              <span>{t('heroFeatureLocal')}</span>
+            </div>
           </div>
         </div>
         <div className={styles.greeting}>{t('welcomeMessageChat250808')}</div>

@@ -54,6 +54,12 @@
   margin-bottom: 26px;
 }
 
+.heroArea {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
 .brandMarkFrame {
   display: flex;
   align-items: center;
@@ -135,8 +141,14 @@
     padding: 0 16px env(safe-area-inset-bottom);
   }
 
+  .heroArea {
+    flex: 1;
+    align-items: center;
+    min-height: 0;
+  }
+
   .hero {
-    margin: auto 0 18px;
+    margin: 0 0 18px;
   }
 
   .brandMarkFrame {

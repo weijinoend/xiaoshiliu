@@ -60,6 +60,7 @@ import { DraftAttachments } from './DraftAttachments.js'
 import { ImageSizePicker } from '../messages/ImageSizePicker.js'
 import { useVoiceInput } from './useVoiceInput.js'
 import { Spectrum } from './Spectrum.js'
+import { VoiceButton } from './VoiceButton.js'
 import { useTranslate } from '../../i18n/index.js'
 import styles from './ChatInput.module.css'
 
@@ -398,6 +399,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       voice.status !== 'idle' ||
       useChatStore.getState().importingHistory ||
       streaming ||
+      event.target instanceof HTMLTextAreaElement ||
       document.activeElement === textareaRef.current ||
       getDraft(sessionId).text.length > 0
     ) {
@@ -532,7 +534,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         >
           <span className={styles.voiceHoldDot} />
           <span className={styles.voiceHoldTimer}>{voice.seconds}s</span>
-          <span>{holdCancelling ? t('voiceHoldCancelHint') : t('voiceHoldRecording')}</span>
+          <span>{t('voiceInputStop')}</span>
         </div>
       ) : voice.status === 'transcribing' ? (
         <button type="button" className={styles.voiceExternalBanner} onClick={() => voice.cancel()}>
@@ -568,11 +570,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               styles.textarea,
               (recording || voice.status === 'transcribing') && styles.textareaHidden
             )}
-            placeholder={
-              voice.available
-                ? `${t('chatInputPlaceholderChat')} · ${t('voiceHoldHint')}`
-                : t('chatInputPlaceholderChat')
-            }
+            placeholder={t('chatInputPlaceholderChat')}
             rows={2}
             // 仅桌面端精细指针设备自动聚焦，避免触屏/平板一打开就弹出键盘或锁定长按语音
             autoFocus={
@@ -768,6 +766,12 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
             ) : null}
           </div>
           <div className={styles.right}>
+            <VoiceButton
+              status={voice.status}
+              disabled={!voice.available || importingHistory || streaming}
+              seconds={voice.seconds}
+              onClick={() => void voice.toggle()}
+            />
             <Tooltip content={t('chatInputMoreActions')}>
               <button
                 type="button"

@@ -1271,6 +1271,53 @@ const findLocalBlob = async (sessionId: string, fileId: string): Promise<Blob | 
 }
 
 /**
+ * DeepSeek 原生 Files API 对 user_data document 的解析能力有限。
+ * 文本、代码、CSV 等可本地直读的文件直接并入本轮用户消息，确保模型一定能看到内容；
+ * PDF / Word / PPT 等版面文档仍交给服务端 document 块解析。
+ */
+const extractNativeTextAttachments = async (
+  sessionId: string,
+  question: UserMessage,
+  signal: AbortSignal
+): Promise<UserMessage> => {
+  const stripped = new Set<string>()
+  const notes: string[] = []
+  let remaining = 24_000
+
+  for (const file of question.files) {
+    signal.throwIfAborted()
+    if (file.isImage || remaining <= 0) {
+      continue
+    }
+    const textReadable = TEXT_MIME_RE.test(file.mimeType) || TEXT_EXT_RE.test(file.name)
+    if (!textReadable || file.size > 512 * 1024) {
+      continue
+    }
+    const blob = await findLocalBlob(sessionId, file.id)
+    if (!blob) {
+      continue
+    }
+    const content = (await blob.text()).replaceAll('\u0000', '').trim()
+    if (!content) {
+      continue
+    }
+    const excerpt = content.slice(0, Math.min(12_000, remaining))
+    notes.push(`[文件：${file.name}]\n${excerpt}`)
+    remaining -= excerpt.length
+    stripped.add(file.id)
+  }
+
+  if (stripped.size === 0) {
+    return question
+  }
+  return {
+    ...question,
+    content: [question.content, ...notes].filter(Boolean).join('\n\n'),
+    files: question.files.filter((file) => !stripped.has(file.id)),
+  }
+}
+
+/**
  * 读取并预处理本轮及历史附件（供 OpenAI 兼容或自定义图片识别/文字识别渠道使用）：
  * - 自定义图片识别渠道：用外部视觉模型把图片转为文字描述并附加到提问；
  * - 自定义文字识别渠道 / OpenAI 内联：把纯文本文件或图片数据转为请求内联块。
@@ -1809,9 +1856,12 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
               question: request.question,
               prefix: request.prefix,
             }
+        const preparedQuestion = useDeepSeekFiles
+          ? await extractNativeTextAttachments(sessionId, prepared.question, controller.signal)
+          : prepared.question
         const inlinePrepared = useDeepSeekFiles
           ? {
-              question: prepared.question,
+              question: preparedQuestion,
               inlineImages: new Map<string, string>(),
               inlineTexts: new Map<string, string>(),
             }
@@ -1911,13 +1961,23 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           settings.chatProtocol
         )
         builtRoundCount = builtRequest.roundCount
-        const tools = serverTools(initial.search ?? false, settings.readUrl)
+        const hasDocumentBlocks =
+          settings.chatProtocol === 'deepseek' &&
+          messages.some(
+            (message) =>
+              typeof message.content !== 'string' &&
+              message.content.some((block) => block.type === 'document')
+          )
+        // DeepSeek 扩展模式不支持 document 内容块；有文档时改用标准模式，优先保证文件可被识别。
+        const tools = hasDocumentBlocks
+          ? undefined
+          : serverTools(initial.search ?? false, settings.readUrl)
         const requestBody: CreateMessageRequest = {
           model: initial.model ?? (settings.model.trim() || MODEL),
           ...(system ? { system } : {}),
           messages,
           thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
-          ...(settings.safetyCheck ? { safety_check: SAFETY_CHECK } : {}),
+          ...(settings.safetyCheck && !hasDocumentBlocks ? { safety_check: SAFETY_CHECK } : {}),
           ...(tools && tools.length > 0 ? { tools } : {}),
           ...(settings.temperature !== null ? { temperature: settings.temperature } : {}),
           ...(settings.topP !== null ? { top_p: settings.topP } : {}),
