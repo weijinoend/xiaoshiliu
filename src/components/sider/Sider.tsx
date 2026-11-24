@@ -63,7 +63,10 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
       <div className={styles.top}>
         <div className={styles.brandLockup}>
           <img className={styles.brandIcon} src={brandUrl} alt="" />
-          <div className={styles.appName}>{t('appName')}</div>
+          <div className={styles.brandCopy}>
+            <div className={styles.appName}>{t('appName')}</div>
+            <div className={styles.brandMotto}>{t('brandMotto')}</div>
+          </div>
         </div>
         <IconButton
           size="m"

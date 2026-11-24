@@ -963,7 +963,7 @@ const generateViaImages = async ({
   if (valid.length === 0) {
     throw new ApiError('protocol', 'Unsupported image response format')
   }
-  return valid
+  return valid.slice(0, Math.max(1, Math.min(4, count)))
 }
 
 const shouldFallbackProtocol = (error: unknown): boolean =>

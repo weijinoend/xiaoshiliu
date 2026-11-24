@@ -71,6 +71,8 @@ export type ImagePart = {
   size?: string
   gifFrameCount?: number
   gifFrameDurationMs?: number
+  requestedCount?: number
+  outputFormat?: 'auto' | 'png' | 'jpeg' | 'webp' | 'gif'
   sourceFileIds?: string[]
   status?: 'pending_confirm' | 'generating' | 'done' | 'cancelled' | 'error'
   error?: string

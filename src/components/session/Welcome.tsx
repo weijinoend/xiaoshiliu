@@ -42,6 +42,7 @@ export const Welcome = () => {
               <span>{t('heroFeatureImage')}</span>
               <span>{t('heroFeatureLocal')}</span>
             </div>
+            <div className={styles.heroNote}>{t('heroNote')}</div>
           </div>
         </div>
         <div className={styles.greeting}>{t('welcomeMessageChat250808')}</div>

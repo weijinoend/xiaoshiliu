@@ -28,16 +28,47 @@
 }
 
 .bubble {
+  position: relative;
+  overflow: hidden;
   max-width: calc(100% - 88px);
   box-sizing: border-box;
-  padding: 10px 16px;
-  border-radius: 22px;
+  padding: 11px 17px;
+  border-radius: 22px 8px 22px 22px;
   font-size: 16px;
   line-height: 24px;
-  color: var(--dsw-alias-label-primary);
-  background-color: var(--dsw-specific-bubble);
+  color: #fffaf8;
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, 0.22) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 95% 28%, rgba(255, 255, 255, 0.15) 0 1.5px, transparent 2px),
+    linear-gradient(135deg, #9f3656, #c96881);
+  box-shadow:
+    0 9px 24px rgba(114, 37, 62, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.bubble::after {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  width: 16px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(86, 28, 48, 0.14);
+  content: '';
+  transform: rotate(-18deg);
+  pointer-events: none;
+}
+
+[data-ds-dark-theme] .bubble,
+[data-deepjeek-skin='ink'] .bubble {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, 0.16) 0 2px, transparent 2.5px),
+    linear-gradient(135deg, #74233d, #a84c67);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 @media not all and (min-width: 440px) {

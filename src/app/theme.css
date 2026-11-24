@@ -3,6 +3,8 @@
     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
     'Open Sans', 'Helvetica Neue', sans-serif;
   font-variant-ligatures: no-contextual;
+  --xiaoshiliu-display-font:
+    'Iowan Old Style', 'Palatino Linotype', 'Noto Serif CJK SC', 'Songti SC', Georgia, serif;
 }
 
 body {
@@ -123,15 +125,15 @@ body[data-ds-dark-theme] {
 }
 
 body {
-  --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-layer-2: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-layer-3: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-skeleton: rgba(0, 0, 0, 0.04);
+  --dsw-alias-bg-base: #fbf7f2;
+  --dsw-alias-bg-layer-2: #fffdfb;
+  --dsw-alias-bg-layer-3: #fffaf5;
+  --dsw-alias-bg-skeleton: rgba(84, 48, 61, 0.05);
   --dsw-alias-border-inverted: rgba(0, 0, 0, 0);
-  --dsw-alias-border-l1: rgba(0, 0, 0, 0.04);
-  --dsw-alias-border-l2-darkmode-thin: rgba(0, 0, 0, 0.1);
-  --dsw-alias-border-l2: rgba(0, 0, 0, 0.1);
-  --dsw-alias-border-l3: rgba(0, 0, 0, 0.12);
+  --dsw-alias-border-l1: rgba(91, 54, 67, 0.07);
+  --dsw-alias-border-l2-darkmode-thin: rgba(91, 54, 67, 0.1);
+  --dsw-alias-border-l2: rgba(91, 54, 67, 0.13);
+  --dsw-alias-border-l3: rgba(91, 54, 67, 0.18);
   --dsw-alias-brand-primary-invert: rgb(174, 62, 91);
   --dsw-alias-brand-primary: rgb(174, 62, 91);
   --dsw-alias-brand-text: rgb(157, 47, 76);
@@ -142,10 +144,10 @@ body {
   --dsw-alias-button-ghost-active-hover: rgb(252, 232, 236);
   --dsw-alias-button-primary-fill: var(--dsw-alias-brand-primary);
   --dsw-alias-button-primary-hover: rgb(195, 79, 108);
-  --dsw-alias-interactive-bg-active: rgba(38, 49, 72, 0.1);
+  --dsw-alias-interactive-bg-active: rgba(105, 53, 70, 0.11);
   --dsw-alias-interactive-bg-hover-danger: rgba(236, 19, 19, 0.05);
-  --dsw-alias-interactive-bg-hover: rgba(38, 49, 72, 0.06);
-  --dsw-alias-interactive-bg-hover-accent: rgba(38, 49, 72, 0.14);
+  --dsw-alias-interactive-bg-hover: rgba(105, 53, 70, 0.065);
+  --dsw-alias-interactive-bg-hover-accent: rgba(105, 53, 70, 0.14);
   --dsw-alias-label-caption: var(--dsw-static-neutral-bluish-400);
   --dsw-alias-label-dimmed: var(--dsw-static-neutral-bluish-200);
   --dsw-alias-label-primary-foreground: var(--dsw-static-neutral-bluish-00);
@@ -163,12 +165,12 @@ body {
   --dsw-alias-state-error-secondary: var(--dsw-static-red-400);
   --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-800);
   --dsw-specific-bubble: rgb(255, 243, 246);
-  --dsw-specific-input-major: var(--dsw-static-neutral-bluish-00);
-  --dsw-specific-login-input: var(--dsw-static-neutral-bluish-50);
+  --dsw-specific-input-major: rgba(255, 253, 251, 0.94);
+  --dsw-specific-login-input: #fffaf6;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-850);
-  --dsw-specific-selector: var(--dsw-static-neutral-bluish-75);
-  --dsw-specific-sidebar-fill: var(--dsw-static-neutral-bluish-50);
+  --dsw-specific-selector: #f5e9e7;
+  --dsw-specific-sidebar-fill: #f7f0e9;
   --dsw-specific-sidebar-nav-item-active-accent: rgb(252, 232, 236);
   --dsw-specific-sidebar-nav-item-hover: var(--dsw-static-neutral-bluish-75);
 }
@@ -224,36 +226,36 @@ body[data-ds-dark-theme] {
   --dsw-specific-sidebar-nav-item-hover: var(--dsw-static-neutral-bluish-850);
 }
 
-/* DeepJeek skin: Midnight Ink */
+/* 小石榴皮肤：墨夜 */
 body[data-deepjeek-skin='ink'] {
-  --deepjeek-new-chat-a: rgb(24, 111, 120);
-  --deepjeek-new-chat-b: rgb(78, 214, 207);
-  --deepjeek-on-accent: #061517;
-  --deepjeek-new-chat-shadow: rgba(62, 218, 210, 0.2);
-  --deepjeek-input-border: rgba(98, 225, 220, 0.3);
-  --deepjeek-input-ring: rgba(98, 225, 220, 0.075);
-  --deepjeek-welcome-glow: rgba(71, 209, 206, 0.1);
-  --dsw-alias-bg-base: #0a0f19;
-  --dsw-alias-bg-layer-2: #111827;
-  --dsw-alias-bg-layer-3: #182235;
+  --deepjeek-new-chat-a: #8b2948;
+  --deepjeek-new-chat-b: #d36f87;
+  --deepjeek-on-accent: #fff8f5;
+  --deepjeek-new-chat-shadow: rgba(213, 72, 108, 0.22);
+  --deepjeek-input-border: rgba(232, 128, 150, 0.32);
+  --deepjeek-input-ring: rgba(232, 128, 150, 0.075);
+  --deepjeek-welcome-glow: rgba(219, 84, 117, 0.14);
+  --dsw-alias-bg-base: #120d13;
+  --dsw-alias-bg-layer-2: #1b131b;
+  --dsw-alias-bg-layer-3: #251923;
   --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.07);
-  --dsw-alias-border-l1: rgba(151, 182, 214, 0.09);
-  --dsw-alias-border-l2-darkmode-thin: rgba(151, 182, 214, 0.12);
-  --dsw-alias-border-l2: rgba(151, 182, 214, 0.16);
-  --dsw-alias-border-l3: rgba(151, 182, 214, 0.22);
-  --dsw-alias-brand-primary: #62e1dc;
-  --dsw-alias-brand-primary-invert: #dffbf9;
-  --dsw-alias-brand-text: #78e8e4;
+  --dsw-alias-border-l1: rgba(235, 192, 201, 0.09);
+  --dsw-alias-border-l2-darkmode-thin: rgba(235, 192, 201, 0.12);
+  --dsw-alias-border-l2: rgba(235, 192, 201, 0.16);
+  --dsw-alias-border-l3: rgba(235, 192, 201, 0.22);
+  --dsw-alias-brand-primary: #f08aa0;
+  --dsw-alias-brand-primary-invert: #ffe8ed;
+  --dsw-alias-brand-text: #ffabc0;
   --dsw-alias-button-contrast-fill: #e6f5ff;
   --dsw-alias-button-elevated-fill: #172235;
-  --dsw-alias-button-ghost-active-border: #266c73;
-  --dsw-alias-button-ghost-active-fill: #112f35;
-  --dsw-alias-button-ghost-active-hover: #163b40;
-  --dsw-alias-button-primary-fill: #62e1dc;
-  --dsw-alias-button-primary-hover: #88efeb;
-  --dsw-alias-interactive-bg-active: rgba(128, 235, 230, 0.13);
-  --dsw-alias-interactive-bg-hover: rgba(128, 235, 230, 0.07);
-  --dsw-alias-interactive-bg-hover-accent: rgba(128, 235, 230, 0.16);
+  --dsw-alias-button-ghost-active-border: #8f4358;
+  --dsw-alias-button-ghost-active-fill: #3d202a;
+  --dsw-alias-button-ghost-active-hover: #4b2632;
+  --dsw-alias-button-primary-fill: #f08aa0;
+  --dsw-alias-button-primary-hover: #ffadc0;
+  --dsw-alias-interactive-bg-active: rgba(255, 174, 193, 0.13);
+  --dsw-alias-interactive-bg-hover: rgba(255, 174, 193, 0.07);
+  --dsw-alias-interactive-bg-hover-accent: rgba(255, 174, 193, 0.16);
   --dsw-alias-label-caption: #66768b;
   --dsw-alias-label-dimmed: #718198;
   --dsw-alias-label-primary: #edf5ff;
@@ -271,17 +273,17 @@ body[data-deepjeek-skin='ink'] {
   --dsw-alias-state-error-secondary: #ff9298;
   --dsw-alias-toast-bg: #162132;
   --dsw-alias-tooltip-bg: #172235;
-  --dsw-specific-bubble: #142235;
-  --dsw-specific-input-major: #111927;
-  --dsw-specific-login-input: #0c1421;
-  --dsw-specific-menu: #182235;
-  --dsw-specific-selector: #1a283b;
-  --dsw-specific-sidebar-fill: #080d16;
-  --dsw-specific-sidebar-nav-item-active-accent: #142a32;
-  --dsw-specific-sidebar-nav-item-hover: #111b2a;
+  --dsw-specific-bubble: #2b1721;
+  --dsw-specific-input-major: #1d141b;
+  --dsw-specific-login-input: #171016;
+  --dsw-specific-menu: #251923;
+  --dsw-specific-selector: #30202a;
+  --dsw-specific-sidebar-fill: #0e0a0f;
+  --dsw-specific-sidebar-nav-item-active-accent: #3a202b;
+  --dsw-specific-sidebar-nav-item-hover: #25171f;
 }
 
-/* DeepJeek skin: Cream Cloud */
+/* 小石榴皮肤：奶油云 */
 body[data-deepjeek-skin='cloud'] {
   --deepjeek-new-chat-a: rgb(151, 73, 104);
   --deepjeek-new-chat-b: rgb(211, 137, 161);

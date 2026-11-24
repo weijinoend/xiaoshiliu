@@ -25,6 +25,7 @@ import {
   matchesRefusalKeyword,
   setImageGen,
   setImageGenChannel,
+  supportsImageGifModel,
   useSettings,
 } from '../settings.js'
 import { getReplyModeInstruction } from '../replyModes.js'
@@ -1423,8 +1424,54 @@ const prepareInlineAttachments = async (
   return { question, inlineImages, inlineTexts }
 }
 
-const IMAGE_GEN_TAG_RE = /<generate_image>([\s\S]*?)<\/generate_image>/i
-const IMAGE_GEN_TAG_RE_G = /<generate_image>[\s\S]*?<\/generate_image>/gi
+const IMAGE_GEN_TAG_RE = /<generate_image\b([^>]*)>([\s\S]*?)<\/generate_image>/i
+const IMAGE_GEN_TAG_RE_G = /<generate_image\b[^>]*>[\s\S]*?<\/generate_image>/gi
+
+type RequestedImageOptions = {
+  count: number
+  outputFormat: 'auto' | 'png' | 'jpeg' | 'webp' | 'gif'
+}
+
+const IMAGE_COUNT_WORDS: Record<string, number> = {
+  '1': 1,
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  一: 1,
+  两: 2,
+  二: 2,
+  三: 3,
+  四: 4,
+}
+
+/**
+ * 用户明确说几张就严格几张；只有未说明时才使用全局设置。
+ * 标签属性优先于自然语言，供聊天模型进行单次覆盖。
+ */
+const resolveRequestedImageOptions = (
+  text: string,
+  tagAttributes = ''
+): RequestedImageOptions => {
+  const channel = useSettings.getState().imageGenChannel
+  const countMatch =
+    /(?:生成|画|来|出|要|给我|images?|pictures?)?\s*([1-4一二两三四])\s*(?:张|幅|个|版|images?|pictures?)/i.exec(
+      text
+    )
+  const attrCount = /(?:^|\s)count\s*=\s*["']?([1-4])["']?/i.exec(tagAttributes)?.[1]
+  const attrFormat = /(?:^|\s)format\s*=\s*["']?(gif|auto|png|jpeg|webp)["']?/i.exec(
+    tagAttributes
+  )?.[1] as RequestedImageOptions['outputFormat'] | undefined
+  const wantsAnimation = /gif|动图|动画|会动|循环动画|animated|animation/i.test(text)
+  const detectedCount = Number(attrCount ?? IMAGE_COUNT_WORDS[countMatch?.[1] ?? ''])
+  return {
+    count: Number.isFinite(detectedCount)
+      ? Math.min(4, Math.max(1, detectedCount))
+      : channel.count,
+    outputFormat:
+      attrFormat ??
+      (wantsAnimation && supportsImageGifModel(channel.model) ? 'gif' : channel.outputFormat),
+  }
+}
 
 /** 使 sourceEntries 下标与 openai / responses 协议实际发送的 messages 数组精确对齐 */
 const alignSourceEntriesForProtocol = (
@@ -1521,14 +1568,17 @@ const saveAndCreateImageBlocks = async (
   signal: AbortSignal,
   sessionId?: string,
   sourceFileIds: string[] = [],
-  sizeOverride?: string
+  sizeOverride?: string,
+  requestedOptions?: RequestedImageOptions
 ): Promise<StoredGeneratedImage[]> => {
   const settings = useSettings.getState()
   const { imageGenChannel } = settings
   const baseUrl = imageGenChannel.baseUrl.trim() || getApiOrigin()
   const apiKey = imageGenChannel.apiKey.trim() || settings.apiKey || ''
   const model = imageGenChannel.model.trim()
-  const isGif = imageGenChannel.outputFormat === 'gif'
+  const effectiveCount = requestedOptions?.count ?? imageGenChannel.count
+  const effectiveOutputFormat = requestedOptions?.outputFormat ?? imageGenChannel.outputFormat
+  const isGif = effectiveOutputFormat === 'gif'
   if (!model) {
     throw new ApiError('protocol', '未配置生图模型名称，请在设置 → 模型与接口中填写生图模型')
   }
@@ -1578,8 +1628,8 @@ const saveAndCreateImageBlocks = async (
     preferResponses: settings.chatProtocol === 'responses',
     customHeadersRaw: imageGenChannel.customHeaders.trim() || settings.customHeaders,
     referenceImages,
-    count: imageGenChannel.count,
-    outputFormat: imageGenChannel.outputFormat,
+    count: effectiveCount,
+    outputFormat: effectiveOutputFormat,
     gifFrameCount: imageGenChannel.gifFrameCount,
     gifFrameDurationMs: imageGenChannel.gifFrameDurationMs,
     signal,
@@ -1683,6 +1733,10 @@ export const confirmImageGeneration = async (
     block.size ??
     useSettings.getState().imageGenChannel.size
   ).trim()
+  const requestedOptions: RequestedImageOptions = {
+    count: block.requestedCount ?? useSettings.getState().imageGenChannel.count,
+    outputFormat: block.outputFormat ?? useSettings.getState().imageGenChannel.outputFormat,
+  }
 
   const controller = new AbortController()
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
@@ -1701,7 +1755,8 @@ export const confirmImageGeneration = async (
       controller.signal,
       sessionId,
       block.sourceFileIds ?? [],
-      chosenSize
+      chosenSize,
+      requestedOptions
     )
     updateSession(sessionId, (session) => ({
       ...session,
@@ -1786,7 +1841,8 @@ const runImageGeneration = async (
   sourceFileIds: string[] = []
 ) => {
   const { imageGenChannel } = useSettings.getState()
-  const isGif = imageGenChannel.outputFormat === 'gif'
+  const requestedOptions = resolveRequestedImageOptions(prompt)
+  const isGif = requestedOptions.outputFormat === 'gif'
   const initialSize =
     sourceFileIds.length > 0 && (!imageGenChannel.size || imageGenChannel.size === 'auto')
       ? 'match'
@@ -1804,6 +1860,8 @@ const runImageGeneration = async (
           mimeType: isGif ? 'image/gif' : 'image/png',
           prompt,
           size: initialSize,
+          requestedCount: requestedOptions.count,
+          outputFormat: requestedOptions.outputFormat,
           ...(isGif
             ? {
                 gifFrameCount: imageGenChannel.gifFrameCount,
@@ -1828,7 +1886,8 @@ const runImageGeneration = async (
       controller.signal,
       sessionId,
       sourceFileIds,
-      initialSize
+      initialSize,
+      requestedOptions
     )
     const revisedPrompts = [
       ...new Set(results.map((result) => result.revisedPrompt).filter(Boolean)),
@@ -1946,8 +2005,12 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             : ''
         const canModelGenerateImage =
           settings.imageGenChannel.enabled && Boolean(settings.imageGenChannel.model.trim())
+        const gifSupported = supportsImageGifModel(settings.imageGenChannel.model)
         const imageGenHint = canModelGenerateImage
-          ? '你已接入生图模型，具备直接为用户生成图片与图生图（基于用户上传的参考图片修改或重绘）的能力。当用户要求画画、生成图片、设计配图、修改图片或图生图时，绝对不要说“我无法生成图片”，而是在回复末尾输出一行标记：<generate_image>详细的英文或中文绘画/改图提示词</generate_image>。客户端会自动提取该提示词（若有本轮上传图片也会一并作为参考图）调用生图模型展示给用户。如果用户只是普通聊天或询问图片内容而非要求画图/改图，不要输出该标记。'
+          ? `你已接入生图模型，具备直接为用户生成图片、多图和图生图（基于用户上传的参考图片修改或重绘）的能力。当用户要求画画、生成图片、设计配图、修改图片或图生图时，绝对不要说“我无法生成图片”。
+${gifSupported ? '当前模型支持 GPT Image 2.6 的 GIF 动图。用户要求 GIF、动图、循环动画或“会动”的图片时，可以生成动图；不要回答“不能生成动图”。' : '当前配置的模型不支持 GIF 动图；用户要求动图时，明确说明需要切换到 gpt-image-2.6 Flare / Sunburst，其他图片能力仍可正常生成。'}
+用户明确要求数量时，必须遵守 1–4 张的数量上限；用户没有指定数量时，客户端会使用当前设置。
+在回复末尾输出一行标记，并在属性中声明本次请求的格式和数量，例如：<generate_image format="gif" count="2">详细的英文或中文绘画/改图提示词</generate_image>。如果只是普通聊天或询问图片内容而非要求画图/改图，不要输出该标记。`
           : ''
         // 续写不重新注入动态变化的长期记忆/跨对话记忆，保持本轮上下文稳定与前缀缓存命中。
         const savedMemoryContext =
@@ -2103,8 +2166,12 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         // 若模型在回复中输出了 <generate_image>...</generate_image>，按确认开关决定先确认或立即生图
         if (canModelGenerateImage && reply.stopReason !== 'refusal') {
           const match = IMAGE_GEN_TAG_RE.exec(getReplyText(reply))
-          const imgPrompt = match?.[1]?.trim()
+          const imgPrompt = match?.[2]?.trim()
           if (imgPrompt) {
+            const requestedOptions = resolveRequestedImageOptions(
+              prepared.question.content,
+              match?.[1] ?? ''
+            )
             const sourceFileIds = prepared.question.files
               .filter((file) => file.isImage)
               .map((file) => file.id)
@@ -2116,7 +2183,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
                       ...block,
                       text: block.text
                         .replace(IMAGE_GEN_TAG_RE_G, '')
-                        .replace(/<\/?generate_image>/gi, '')
+                        .replace(/<\/?generate_image\b[^>]*>/gi, '')
                         .trim(),
                     }
                   : block
@@ -2124,7 +2191,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             }
             const initialSize =
               sourceFileIds.length > 0 ? 'match' : settings.imageGenChannel.size || 'auto'
-            const isGif = settings.imageGenChannel.outputFormat === 'gif'
+            const isGif = requestedOptions.outputFormat === 'gif'
             if (settings.imageGenChannel.requireConfirm) {
               reply = {
                 ...reply,
@@ -2136,6 +2203,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
                     mimeType: isGif ? 'image/gif' : 'image/png',
                     prompt: imgPrompt,
                     size: initialSize,
+                    requestedCount: requestedOptions.count,
+                    outputFormat: requestedOptions.outputFormat,
                     ...(isGif
                       ? {
                           gifFrameCount: settings.imageGenChannel.gifFrameCount,
@@ -2155,7 +2224,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
                   controller.signal,
                   sessionId,
                   sourceFileIds,
-                  initialSize
+                  initialSize,
+                  requestedOptions
                 )
                 reply = {
                   ...reply,

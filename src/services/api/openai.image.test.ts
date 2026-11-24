@@ -16,7 +16,11 @@ describe('generateImage', () => {
         requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
         return new Response(
           JSON.stringify({
-            data: [{ b64_json: GIF_BASE64 }, { b64_json: GIF_BASE64 }],
+            data: [
+              { b64_json: GIF_BASE64 },
+              { b64_json: GIF_BASE64 },
+              { b64_json: GIF_BASE64 },
+            ],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
