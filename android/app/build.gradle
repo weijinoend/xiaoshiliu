@@ -42,13 +42,13 @@ gradle.taskGraph.whenReady { taskGraph ->
             (it.name.startsWith('assemble') || it.name.startsWith('bundle') || it.name.startsWith('package'))
     }
     if (needsReleaseSigning) {
-        def ksPath = System.getenv('DEEPCHAT_KEYSTORE_FILE')
-        def ksPass = System.getenv('DEEPCHAT_KEYSTORE_PASS')
-        def ksAlias = System.getenv('DEEPCHAT_KEY_ALIAS')
-        def keyPass = System.getenv('DEEPCHAT_KEY_PASS')
+        def ksPath = System.getenv('DEEPJEEK_KEYSTORE_FILE') ?: System.getenv('DEEPCHAT_KEYSTORE_FILE')
+        def ksPass = System.getenv('DEEPJEEK_KEYSTORE_PASS') ?: System.getenv('DEEPCHAT_KEYSTORE_PASS')
+        def ksAlias = System.getenv('DEEPJEEK_KEY_ALIAS') ?: System.getenv('DEEPCHAT_KEY_ALIAS')
+        def keyPass = System.getenv('DEEPJEEK_KEY_PASS') ?: System.getenv('DEEPCHAT_KEY_PASS')
         if (!ksPath || !file(ksPath).exists() || !ksPass || !ksAlias || !keyPass) {
             throw new GradleException(
-                'Release signing requires DEEPCHAT_KEYSTORE_FILE, DEEPCHAT_KEYSTORE_PASS, DEEPCHAT_KEY_ALIAS, and DEEPCHAT_KEY_PASS.'
+                'Release signing requires DEEPJEEK/DEEPCHAT keystore file, password, alias, and key password.'
             )
         }
     }
