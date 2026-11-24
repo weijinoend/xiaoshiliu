@@ -761,6 +761,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
                 compact
                 value={imageGenChannel.size}
                 hasReference={hasImageAttachment}
+                isGif={imageGenChannel.outputFormat === 'gif'}
                 onChange={(size) => setImageGenChannel({ ...imageGenChannel, size })}
               />
             ) : null}

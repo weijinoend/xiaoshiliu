@@ -20,3 +20,21 @@ export const monthKey = (value: string | number | Date): string | null => {
   const date = toDate(value)
   return date ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}` : null
 }
+
+/** 生成图片 Blob 的常用扩展名；动画 GIF 必须保留 .gif，不能落成静态 PNG 文件名。 */
+export const imageExtensionFromMime = (mimeType: string): string => {
+  const mime = mimeType.toLowerCase()
+  if (mime.includes('jpeg') || mime.includes('jpg')) {
+    return 'jpg'
+  }
+  if (mime.includes('webp')) {
+    return 'webp'
+  }
+  if (mime.includes('gif')) {
+    return 'gif'
+  }
+  if (mime.includes('svg')) {
+    return 'svg'
+  }
+  return 'png'
+}

@@ -20,6 +20,7 @@ import { ImageSizePicker } from './ImageSizePicker.js'
 import { openImageViewer } from './imageViewerState.js'
 import { showToast } from '../base/toastState.js'
 import { saveDownloadedUrl } from '../../utils/download.js'
+import { imageExtensionFromMime } from '../../utils/format.js'
 import styles from './AssistantMessage.module.css'
 
 /**
@@ -85,6 +86,12 @@ export const GeneratedImage = ({
   }, [block.fileId])
 
   const status = block.status ?? (block.fileId ? 'done' : 'pending_confirm')
+  const gifBadge = block.gifFrameCount
+    ? t('imageGenGifBadge', {
+        frames: block.gifFrameCount,
+        duration: block.gifFrameDurationMs ?? 200,
+      })
+    : null
 
   if (status === 'cancelled') {
     return <div className={styles.imageGenMutedCard}>{t('imageGenCancelled')}</div>
@@ -96,6 +103,7 @@ export const GeneratedImage = ({
         <div className={styles.imageGenHeader}>
           <IconImageGen14 />
           <span>{t('imageGenGenerating')}</span>
+          {gifBadge ? <span className={styles.imageGenSizeBadge}>{gifBadge}</span> : null}
           {block.size ? <span className={styles.imageGenSizeBadge}>{block.size}</span> : null}
         </div>
         {block.prompt ? <div className={styles.imageGenPromptText}>{block.prompt}</div> : null}
@@ -110,6 +118,7 @@ export const GeneratedImage = ({
         <div className={styles.imageGenHeader}>
           {isError ? <IconWarningOutline16 /> : <IconImageGen14 />}
           <span>{isError ? t('imageGenFailed') : t('imageGenConfirmTitle')}</span>
+          {gifBadge ? <span className={styles.imageGenSizeBadge}>{gifBadge}</span> : null}
           {hasReference ? (
             <span className={styles.imageGenSizeBadge}>
               {t('imageGenImg2ImgBadge', { count: block.sourceFileIds?.length ?? 0 })}
@@ -124,7 +133,12 @@ export const GeneratedImage = ({
           value={promptDraft}
           onChange={(event) => setPromptDraft(event.target.value)}
         />
-        <ImageSizePicker value={sizeDraft} hasReference={hasReference} onChange={setSizeDraft} />
+        <ImageSizePicker
+          value={sizeDraft}
+          hasReference={hasReference}
+          isGif={block.mimeType.includes('gif') || block.gifFrameCount !== undefined}
+          onChange={setSizeDraft}
+        />
         <div className={styles.imageGenConfirmActions}>
           <Button
             size="s"
@@ -152,11 +166,8 @@ export const GeneratedImage = ({
     return null
   }
 
-  const ext = block.mimeType.includes('jpeg')
-    ? 'jpg'
-    : block.mimeType.includes('webp')
-      ? 'webp'
-      : 'png'
+  const ext = imageExtensionFromMime(block.mimeType)
+  const isAnimation = ext === 'gif'
 
   const download = () => {
     void saveDownloadedUrl(url, `generated-${block.fileId.slice(0, 8)}.${ext}`)
@@ -197,7 +208,7 @@ export const GeneratedImage = ({
           />
           <IconButton
             icon={<IconDownloadOutline16 />}
-            tooltip={t('imageGenDownload')}
+            tooltip={t(isAnimation ? 'imageGenDownloadAnimation' : 'imageGenDownload')}
             onClick={download}
           />
         </div>

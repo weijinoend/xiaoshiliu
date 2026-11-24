@@ -173,6 +173,12 @@ const readFragment: Read<Fragment> = (value) => {
           : {}),
         ...('prompt' in item && item.prompt !== undefined ? { prompt: string(item.prompt) } : {}),
         ...('size' in item && item.size !== undefined ? { size: string(item.size) } : {}),
+        ...('frame_count' in item && item.frame_count !== undefined
+          ? { frame_count: count(item.frame_count) }
+          : {}),
+        ...('frame_duration_ms' in item && item.frame_duration_ms !== undefined
+          ? { frame_duration_ms: count(item.frame_duration_ms) }
+          : {}),
       }
     case 'TOOL_IMAGE_SEARCH':
       return {

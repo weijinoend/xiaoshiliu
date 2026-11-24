@@ -627,6 +627,37 @@ const base64ToBlob = (b64: string, mimeType: string): Blob => {
   return new Blob([bytes], { type: mimeType })
 }
 
+const detectImageMimeFromBytes = (bytes: Uint8Array): string => {
+  const startsWith = (...prefix: number[]) => prefix.every((byte, index) => bytes[index] === byte)
+  const header = new TextDecoder('ascii').decode(bytes.subarray(0, 16))
+  if (startsWith(0xff, 0xd8, 0xff)) {
+    return 'image/jpeg'
+  }
+  if (startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) {
+    return 'image/png'
+  }
+  if (header.startsWith('GIF87a') || header.startsWith('GIF89a')) {
+    return 'image/gif'
+  }
+  if (header.startsWith('RIFF') && header.slice(8, 12) === 'WEBP') {
+    return 'image/webp'
+  }
+  if (startsWith(0x42, 0x4d)) {
+    return 'image/bmp'
+  }
+  return ''
+}
+
+/** Some compatible gateways return attachment/octet-stream; inspect the bytes before defaulting to PNG. */
+const normalizeGeneratedBlob = async (blob: Blob): Promise<GeneratedImageResult['blob']> => {
+  const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer())
+  const detected = detectImageMimeFromBytes(bytes)
+  if (detected && blob.type !== detected) {
+    return new Blob([blob], { type: detected })
+  }
+  return blob
+}
+
 const imageFromStringOrUrl = async (
   raw: string,
   revisedPrompt: string | undefined,
@@ -635,20 +666,21 @@ const imageFromStringOrUrl = async (
   if (raw.startsWith('data:')) {
     const match = /^data:([^;]+);base64,(.+)$/.exec(raw)
     if (match) {
-      return { blob: base64ToBlob(match[2], match[1]), mimeType: match[1], revisedPrompt }
+      const blob = await normalizeGeneratedBlob(base64ToBlob(match[2], match[1]))
+      return { blob, mimeType: blob.type || match[1], revisedPrompt }
     }
   }
   if (/^https?:\/\//i.test(raw)) {
     const imgResponse = await request(raw, { method: 'GET', signal })
-    const blob = await imgResponse.blob()
+    const blob = await normalizeGeneratedBlob(await imgResponse.blob())
     return {
       blob,
       mimeType: blob.type || 'image/png',
       revisedPrompt,
     }
   }
-  const mimeType = 'image/png'
-  return { blob: base64ToBlob(raw, mimeType), mimeType, revisedPrompt }
+  const blob = await normalizeGeneratedBlob(base64ToBlob(raw, 'image/png'))
+  return { blob, mimeType: blob.type || 'image/png', revisedPrompt }
 }
 
 const extractImageFromResponsesPayload = async (
@@ -695,6 +727,12 @@ export type ReferenceImageInput = {
   blob: Blob
   name: string
   mimeType: string
+}
+
+type ImageOutputOptions = {
+  outputFormat?: 'auto' | 'png' | 'jpeg' | 'webp' | 'gif'
+  gifFrameCount?: number
+  gifFrameDurationMs?: number
 }
 
 const generateViaResponses = async ({
@@ -825,6 +863,9 @@ const generateViaImages = async ({
   normalizedSize,
   customHeadersRaw,
   referenceImages,
+  outputFormat,
+  gifFrameCount,
+  gifFrameDurationMs,
   signal,
 }: {
   baseUrl: string
@@ -834,6 +875,9 @@ const generateViaImages = async ({
   normalizedSize?: string
   customHeadersRaw: string
   referenceImages: ReferenceImageInput[]
+  outputFormat?: ImageOutputOptions['outputFormat']
+  gifFrameCount?: number
+  gifFrameDurationMs?: number
   signal?: AbortSignal
 }): Promise<GeneratedImageResult> => {
   let response: Response
@@ -844,6 +888,13 @@ const generateViaImages = async ({
     form.append('prompt', prompt)
     if (normalizedSize) {
       form.append('size', normalizedSize)
+    }
+    if (outputFormat && outputFormat !== 'auto') {
+      form.append('output_format', outputFormat)
+    }
+    if (outputFormat === 'gif') {
+      form.append('frame_count', String(gifFrameCount ?? 9))
+      form.append('frame_duration_ms', String(gifFrameDurationMs ?? 200))
     }
     for (const img of referenceImages) {
       const fieldName = referenceImages.length > 1 ? 'image[]' : 'image'
@@ -868,6 +919,13 @@ const generateViaImages = async ({
         prompt,
         n: 1,
         ...(normalizedSize ? { size: normalizedSize } : {}),
+        ...(outputFormat && outputFormat !== 'auto' ? { output_format: outputFormat } : {}),
+        ...(outputFormat === 'gif'
+          ? {
+              frame_count: gifFrameCount ?? 9,
+              frame_duration_ms: gifFrameDurationMs ?? 200,
+            }
+          : {}),
       }),
       signal,
     })
@@ -915,6 +973,9 @@ export const generateImage = async ({
   preferResponses = false,
   customHeadersRaw = '',
   referenceImages = [],
+  outputFormat = 'auto',
+  gifFrameCount,
+  gifFrameDurationMs,
   signal,
 }: {
   baseUrl: string
@@ -926,6 +987,9 @@ export const generateImage = async ({
   preferResponses?: boolean
   customHeadersRaw?: string
   referenceImages?: ReferenceImageInput[]
+  outputFormat?: ImageOutputOptions['outputFormat']
+  gifFrameCount?: number
+  gifFrameDurationMs?: number
   signal?: AbortSignal
 }): Promise<GeneratedImageResult> => {
   const normalizedSize =
@@ -938,7 +1002,14 @@ export const generateImage = async ({
     normalizedSize,
     customHeadersRaw,
     referenceImages,
+    outputFormat,
+    gifFrameCount,
+    gifFrameDurationMs,
     signal,
+  }
+  if (outputFormat === 'gif') {
+    // 2.6 animated GIF output is only available through the non-streaming Images API.
+    return generateViaImages(params)
   }
   if (protocol === 'responses') {
     return generateViaResponses(params)

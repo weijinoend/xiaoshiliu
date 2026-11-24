@@ -207,6 +207,10 @@ const toBlocks = (fragments: Fragment[], messageId: string): ReplyBlock[] => {
             mimeType: item.mime_type || 'image/png',
             ...(item.prompt ? { prompt: item.prompt } : {}),
             ...(item.size ? { size: item.size } : {}),
+            ...(item.frame_count ? { gifFrameCount: item.frame_count } : {}),
+            ...(item.frame_duration_ms
+              ? { gifFrameDurationMs: item.frame_duration_ms }
+              : {}),
             status: 'done',
           },
         ]

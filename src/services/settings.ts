@@ -17,6 +17,7 @@ export type ChatProtocol = 'deepseek' | 'openai' | 'responses' | 'local'
 export type ThinkingEffort = 'low' | 'high' | 'max' | 'xhigh'
 
 export type ImageGenProtocol = 'auto' | 'images' | 'responses'
+export type ImageOutputFormat = 'auto' | 'png' | 'jpeg' | 'webp' | 'gif'
 
 /** 子能力渠道模式：inherit 跟随主 DeepSeek 服务，custom 使用独立的别家服务 */
 export type ServiceChannelMode = 'inherit' | 'custom'
@@ -39,6 +40,9 @@ export type ImageGenChannelConfig = {
   apiKey: string
   model: string
   size: string
+  outputFormat: ImageOutputFormat
+  gifFrameCount: number
+  gifFrameDurationMs: number
   customHeaders: string
   requireConfirm: boolean
 }
@@ -62,9 +66,16 @@ const DEFAULT_IMAGE_GEN_CHANNEL: ImageGenChannelConfig = {
   apiKey: '',
   model: '',
   size: 'auto',
+  outputFormat: 'auto',
+  gifFrameCount: 9,
+  gifFrameDurationMs: 200,
   customHeaders: '',
   requireConfirm: true,
 }
+
+/** GPT Image 2.6 的 Flare / Sunburst 及网关别名均支持 GIF 输出。 */
+export const supportsImageGifModel = (model: string) =>
+  /^gpt-image-2\.6(?:$|-)/i.test(model.trim())
 
 export const DEFAULT_MODEL = 'deepseek-flash'
 export const DEFAULT_SYSTEM_PROMPT = '该助手为小石榴，一个圆润、机灵、有丰富想法的 AI 助手。'
@@ -330,6 +341,21 @@ const readImageGenChannel = (key: string): ImageGenChannelConfig => {
       apiKey: typeof obj.apiKey === 'string' ? obj.apiKey : '',
       model: typeof obj.model === 'string' ? obj.model : '',
       size: typeof obj.size === 'string' && obj.size ? obj.size : 'auto',
+      outputFormat:
+        obj.outputFormat === 'png' ||
+        obj.outputFormat === 'jpeg' ||
+        obj.outputFormat === 'webp' ||
+        obj.outputFormat === 'gif'
+          ? obj.outputFormat
+          : 'auto',
+      gifFrameCount:
+        typeof obj.gifFrameCount === 'number' && Number.isFinite(obj.gifFrameCount)
+          ? Math.min(16, Math.max(2, Math.round(obj.gifFrameCount)))
+          : DEFAULT_IMAGE_GEN_CHANNEL.gifFrameCount,
+      gifFrameDurationMs:
+        typeof obj.gifFrameDurationMs === 'number' && Number.isFinite(obj.gifFrameDurationMs)
+          ? Math.min(2000, Math.max(20, Math.round(obj.gifFrameDurationMs)))
+          : DEFAULT_IMAGE_GEN_CHANNEL.gifFrameDurationMs,
       customHeaders: typeof obj.customHeaders === 'string' ? obj.customHeaders : '',
       requireConfirm: obj.requireConfirm !== false,
     }

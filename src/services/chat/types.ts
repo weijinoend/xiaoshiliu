@@ -69,6 +69,8 @@ export type ImagePart = {
   mimeType: string
   prompt?: string
   size?: string
+  gifFrameCount?: number
+  gifFrameDurationMs?: number
   sourceFileIds?: string[]
   status?: 'pending_confirm' | 'generating' | 'done' | 'cancelled' | 'error'
   error?: string

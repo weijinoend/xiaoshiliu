@@ -2,6 +2,7 @@ import type { ServerToolUseBlock } from '../../api/types.js'
 import { getVisibleMessages, normalizeSession } from '../branches.js'
 import { describeReply } from '../describe.js'
 import type { AssistantMessage, Message, ReplyBlock, Session, UserMessage } from '../types.js'
+import { imageExtensionFromMime } from '../../../utils/format.js'
 import { fail } from './errors.js'
 import type {
   ChatMessage,
@@ -142,12 +143,7 @@ const assistantFragments = (message: AssistantMessage, exportImage: ExportImage)
       response.content += usedWeb ? block.text.replace(/\[citation:\d+\]/g, '') : block.text
       continue
     }
-    const imageExt =
-      block.type === 'image' && block.mimeType.includes('jpeg')
-        ? 'jpg'
-        : block.type === 'image' && block.mimeType.includes('webp')
-          ? 'webp'
-          : 'png'
+    const imageExt = block.type === 'image' ? imageExtensionFromMime(block.mimeType) : 'png'
     const converted: Fragment[] =
       block.type === 'thinking'
         ? block.thinking
@@ -176,6 +172,10 @@ const assistantFragments = (message: AssistantMessage, exportImage: ExportImage)
                 mime_type: block.mimeType,
                 ...(block.prompt ? { prompt: block.prompt } : {}),
                 ...(block.size ? { size: block.size } : {}),
+                ...(block.gifFrameCount ? { frame_count: block.gifFrameCount } : {}),
+                ...(block.gifFrameDurationMs
+                  ? { frame_duration_ms: block.gifFrameDurationMs }
+                  : {}),
               },
             ]
           : block.type === 'server_tool_use'

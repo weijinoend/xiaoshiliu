@@ -199,6 +199,8 @@ export type GeneratedImageFragment = {
   mime_type?: string
   prompt?: string
   size?: string
+  frame_count?: number
+  frame_duration_ms?: number
 }
 
 export type Fragment =

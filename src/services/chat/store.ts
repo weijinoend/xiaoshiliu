@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { translate } from '../../i18n/index.js'
 import { createId } from '../../utils/id.js'
+import { imageExtensionFromMime } from '../../utils/format.js'
 import { ApiError, streamMessage } from '../api/client.js'
 import {
   blobToDataUrl,
@@ -1512,12 +1513,15 @@ const saveAndCreateImageBlock = async (
   mimeType: string
   revisedPrompt?: string
   resolvedSize?: string
+  gifFrameCount?: number
+  gifFrameDurationMs?: number
 }> => {
   const settings = useSettings.getState()
   const { imageGenChannel } = settings
   const baseUrl = imageGenChannel.baseUrl.trim() || getApiOrigin()
   const apiKey = imageGenChannel.apiKey.trim() || settings.apiKey || ''
   const model = imageGenChannel.model.trim()
+  const isGif = imageGenChannel.outputFormat === 'gif'
   if (!model) {
     throw new ApiError('protocol', '未配置生图模型名称，请在设置 → 模型与接口中填写生图模型')
   }
@@ -1567,6 +1571,9 @@ const saveAndCreateImageBlock = async (
     preferResponses: settings.chatProtocol === 'responses',
     customHeadersRaw: imageGenChannel.customHeaders.trim() || settings.customHeaders,
     referenceImages,
+    outputFormat: imageGenChannel.outputFormat,
+    gifFrameCount: imageGenChannel.gifFrameCount,
+    gifFrameDurationMs: imageGenChannel.gifFrameDurationMs,
     signal,
   })
   signal.throwIfAborted()
@@ -1580,6 +1587,12 @@ const saveAndCreateImageBlock = async (
     mimeType: generated.mimeType,
     revisedPrompt: generated.revisedPrompt,
     resolvedSize: targetSize || undefined,
+    ...(isGif
+      ? {
+          gifFrameCount: imageGenChannel.gifFrameCount,
+          gifFrameDurationMs: imageGenChannel.gifFrameDurationMs,
+        }
+      : {}),
   }
 }
 
@@ -1660,6 +1673,12 @@ export const confirmImageGeneration = async (
       mimeType: result.mimeType,
       prompt,
       size: result.resolvedSize ?? chosenSize,
+      ...(result.gifFrameCount
+        ? {
+            gifFrameCount: result.gifFrameCount,
+            gifFrameDurationMs: result.gifFrameDurationMs,
+          }
+        : {}),
       ...(item.sourceFileIds?.length ? { sourceFileIds: item.sourceFileIds } : {}),
       status: 'done',
     }))
@@ -1710,7 +1729,7 @@ export const reuseGeneratedImageInDraft = async (
   if (!blob) {
     return false
   }
-  const ext = mimeType.includes('jpeg') ? 'jpg' : mimeType.includes('webp') ? 'webp' : 'png'
+  const ext = imageExtensionFromMime(mimeType)
   const file = new File([blob], `reference-${fileId.slice(0, 8)}.${ext}`, {
     type: mimeType || 'image/png',
   })
@@ -1727,6 +1746,7 @@ const runImageGeneration = async (
   sourceFileIds: string[] = []
 ) => {
   const { imageGenChannel } = useSettings.getState()
+  const isGif = imageGenChannel.outputFormat === 'gif'
   const initialSize =
     sourceFileIds.length > 0 && (!imageGenChannel.size || imageGenChannel.size === 'auto')
       ? 'match'
@@ -1741,9 +1761,15 @@ const runImageGeneration = async (
         {
           type: 'image',
           fileId: '',
-          mimeType: 'image/png',
+          mimeType: isGif ? 'image/gif' : 'image/png',
           prompt,
           size: initialSize,
+          ...(isGif
+            ? {
+                gifFrameCount: imageGenChannel.gifFrameCount,
+                gifFrameDurationMs: imageGenChannel.gifFrameDurationMs,
+              }
+            : {}),
           ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
           status: 'pending_confirm',
         },
@@ -1775,6 +1801,12 @@ const runImageGeneration = async (
           mimeType: result.mimeType,
           prompt,
           size: result.resolvedSize ?? initialSize,
+          ...(result.gifFrameCount
+            ? {
+                gifFrameCount: result.gifFrameCount,
+                gifFrameDurationMs: result.gifFrameDurationMs,
+              }
+            : {}),
           ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
           status: 'done',
         },
@@ -2063,6 +2095,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             }
             const initialSize =
               sourceFileIds.length > 0 ? 'match' : settings.imageGenChannel.size || 'auto'
+            const isGif = settings.imageGenChannel.outputFormat === 'gif'
             if (settings.imageGenChannel.requireConfirm) {
               reply = {
                 ...reply,
@@ -2071,9 +2104,15 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
                   {
                     type: 'image',
                     fileId: '',
-                    mimeType: 'image/png',
+                    mimeType: isGif ? 'image/gif' : 'image/png',
                     prompt: imgPrompt,
                     size: initialSize,
+                    ...(isGif
+                      ? {
+                          gifFrameCount: settings.imageGenChannel.gifFrameCount,
+                          gifFrameDurationMs: settings.imageGenChannel.gifFrameDurationMs,
+                        }
+                      : {}),
                     ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
                     status: 'pending_confirm',
                   },
@@ -2099,6 +2138,12 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
                       mimeType: generated.mimeType,
                       prompt: imgPrompt,
                       size: generated.resolvedSize ?? initialSize,
+                      ...(generated.gifFrameCount
+                        ? {
+                            gifFrameCount: generated.gifFrameCount,
+                            gifFrameDurationMs: generated.gifFrameDurationMs,
+                          }
+                        : {}),
                       ...(sourceFileIds.length > 0 ? { sourceFileIds } : {}),
                       status: 'done',
                     },

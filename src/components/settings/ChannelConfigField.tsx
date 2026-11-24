@@ -8,6 +8,7 @@ import type {
   ServiceChannelMode,
   TtsChannelConfig,
 } from '../../services/settings.js'
+import { supportsImageGifModel } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
 import { Select, type SelectOption } from '../base/Select.js'
 import styles from './Settings.module.css'
@@ -291,6 +292,80 @@ export const ImageGenChannelCard = ({
               onChange={(model) => onChange({ ...channel, model })}
             />
           </div>
+          <label className={styles.paramItem}>
+            <span className={styles.paramLabel}>{t('imageGenOutputFormatLabel')}</span>
+            <select
+              className={styles.textInput}
+              value={channel.outputFormat}
+              onChange={(event) =>
+                onChange({
+                  ...channel,
+                  outputFormat: event.target.value as ImageGenChannelConfig['outputFormat'],
+                  ...(event.target.value === 'gif' ? { size: 'auto' } : {}),
+                })
+              }
+            >
+              <option value="auto">{t('imageGenOutputAuto')}</option>
+              <option value="png">{t('imageGenOutputPng')}</option>
+              <option value="jpeg">{t('imageGenOutputJpeg')}</option>
+              <option value="webp">{t('imageGenOutputWebp')}</option>
+              <option value="gif">{t('imageGenOutputGif')}</option>
+            </select>
+            <span className={styles.description}>{t('imageGenOutputFormatDesc')}</span>
+          </label>
+          {channel.outputFormat === 'gif' ? (
+            <>
+              <div className={styles.paramGrid}>
+                <label className={styles.paramItem}>
+                  <span className={styles.paramLabel}>{t('imageGenGifFramesLabel')}</span>
+                  <input
+                    type="number"
+                    className={styles.textInput}
+                    min={2}
+                    max={16}
+                    step={1}
+                    value={channel.gifFrameCount}
+                    onChange={(event) => {
+                      const value = Number.parseInt(event.target.value, 10)
+                      if (Number.isFinite(value)) {
+                        onChange({
+                          ...channel,
+                          gifFrameCount: Math.min(16, Math.max(2, value)),
+                        })
+                      }
+                    }}
+                  />
+                </label>
+                <label className={styles.paramItem}>
+                  <span className={styles.paramLabel}>{t('imageGenGifDurationLabel')}</span>
+                  <input
+                    type="number"
+                    className={styles.textInput}
+                    min={20}
+                    max={2000}
+                    step={10}
+                    value={channel.gifFrameDurationMs}
+                    onChange={(event) => {
+                      const value = Number.parseInt(event.target.value, 10)
+                      if (Number.isFinite(value)) {
+                        onChange({
+                          ...channel,
+                          gifFrameDurationMs: Math.min(2000, Math.max(20, value)),
+                        })
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              <span className={styles.description}>{t('imageGenGifFramesDesc')}</span>
+              <span className={styles.description}>{t('imageGenGifDurationDesc')}</span>
+              {!supportsImageGifModel(channel.model) ? (
+                <span className={clsx(styles.description, styles.error)}>
+                  {t('imageGenGifModelHint')}
+                </span>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
