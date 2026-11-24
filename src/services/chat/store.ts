@@ -1859,15 +1859,17 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           reply = settleReply(reply, 'stopped', Date.now(), undefined, settings.keepRefusedContent)
           break
         }
-        // 缓存铁律：system 和已保存的历史轮次必须逐字节稳定。
-        // system 位于请求最前面，只要它变化一个字符，服务端前缀 KV 缓存（prompt cache）
-        // 就会从第一个 token 起全部失效，整段历史都要按未命中价重算。
-        // 因此所有会话内动态/模式化上下文（回复模式、语音通话、实时画面、长期记忆、跨对话检索）
-        // 一律前置到本轮用户消息，只让「最后一条消息」不可缓存，system 与历史全部命中缓存。
-        const turnContext = [
+        // 缓存铁律：system 和已保存的历史轮次必须逐字节稳定，绝不因模式或记忆变更导致整段前缀缓存失效。
+        // 回复模式、语音模式与实时画面指令前置；长期记忆与跨对话召回作为尾注背景档案，
+        // 既避免模型把长期记忆误判为“本轮用户刚下发的新任务”，又保证 system 与全部历史轮次命中前缀缓存。
+        const turnDirectives = [
           replyModeInstruction ? `<reply_mode>\n${replyModeInstruction}\n</reply_mode>` : '',
           voiceSystem ? `<voice_call_mode>\n${voiceSystem}\n</voice_call_mode>` : '',
           visionHint ? `<live_vision_hint>\n${visionHint}\n</live_vision_hint>` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+        const turnNotes = [
           savedMemoryContext
             ? `<long_term_memory>\n${savedMemoryContext}\n</long_term_memory>`
             : '',
@@ -1875,14 +1877,16 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         ]
           .filter(Boolean)
           .join('\n\n')
-        const outboundQuestion = turnContext
-          ? {
-              ...inlinePrepared.question,
-              content: inlinePrepared.question.content
-                ? `${turnContext}\n\n${inlinePrepared.question.content}`
-                : turnContext,
-            }
-          : inlinePrepared.question
+        const combinedContent = [turnDirectives, inlinePrepared.question.content, turnNotes]
+          .filter(Boolean)
+          .join('\n\n')
+        const outboundQuestion =
+          turnDirectives || turnNotes
+            ? {
+                ...inlinePrepared.question,
+                content: combinedContent,
+              }
+            : inlinePrepared.question
         const builtRequest = toRequestMessagesWithSources(
           prepared.history,
           outboundQuestion,

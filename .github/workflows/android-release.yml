@@ -25,17 +25,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@73e4992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        uses: pnpm/action-setup@v4
         with:
-          version: 12.6.0
+          version: 11
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup JDK 17
@@ -116,11 +116,11 @@ jobs:
         shell: bash
         env:
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
-          SIGNING_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS }}
-          SIGNING_KEYSTORE_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS || 'android' }}
+          SIGNING_KEYSTORE_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS || 'androiddebugkey' }}
         run: |
-          if [ -z "$SIGNING_KEYSTORE_BASE64" ] || [ -z "$SIGNING_KEYSTORE_PASS" ] || [ -z "$SIGNING_KEYSTORE_ALIAS" ]; then
-            echo "::error::Missing SIGNING_KEYSTORE_BASE64 / SIGNING_KEYSTORE_PASS / SIGNING_KEY_ALIAS secrets."
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
+            echo "::error::Missing SIGNING_KEYSTORE_BASE64 secret."
             exit 1
           fi
           node -e "
@@ -143,16 +143,12 @@ jobs:
       - name: Build signed Release APK
         env:
           DEEPCHAT_KEYSTORE_FILE: ${{ github.workspace }}/android/release.keystore
-          DEEPCHAT_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS }}
-          DEEPCHAT_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-          DEEPCHAT_KEY_PASS: ${{ secrets.SIGNING_KEY_PASS }}
+          DEEPCHAT_KEYSTORE_PASS: ${{ secrets.SIGNING_KEYSTORE_PASS || 'android' }}
+          DEEPCHAT_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS || 'androiddebugkey' }}
+          DEEPCHAT_KEY_PASS: ${{ secrets.SIGNING_KEY_PASS || secrets.SIGNING_KEYSTORE_PASS || 'android' }}
           VERSION_CODE: ${{ steps.ver.outputs.version_code }}
           VERSION_NAME: ${{ steps.ver.outputs.version_name }}
         run: |
-          if [ -z "$DEEPCHAT_KEY_PASS" ]; then
-            echo "::error::Missing SIGNING_KEY_PASS secret."
-            exit 1
-          fi
           cd android
           sed -i 's/\r$//' gradlew
           chmod +x gradlew

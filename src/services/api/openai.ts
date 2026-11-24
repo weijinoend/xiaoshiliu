@@ -19,7 +19,7 @@ const parseOpenAIUsage = (raw: unknown): MessageUsage | undefined => {
       : typeof obj.input_tokens_details === 'object' && obj.input_tokens_details !== null
         ? (obj.input_tokens_details as Record<string, unknown>)
         : undefined
-  const cached = toUsageInt(promptDetails?.cached_tokens)
+  const cached = toUsageInt(promptDetails?.cached_tokens ?? obj.prompt_cache_hit_tokens)
   const input = Math.max(0, prompt - cached)
   if (prompt === 0 && output === 0) {
     return undefined

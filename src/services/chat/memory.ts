@@ -10,7 +10,6 @@ const ASSISTANT_SNIPPET_MAX = 360
 const MAX_ROUNDS_PER_SESSION = 2
 const RECENT_FALLBACK_LIMIT = 3
 const MAX_CANDIDATE_SESSIONS = 60
-const MAX_INDEXED_ROUNDS_PER_SESSION = 24
 const MAX_TOKENIZE_CHARS = 1200
 
 const STOP_WORDS = new Set([
@@ -159,7 +158,7 @@ const clipSnippet = (text: string, maxLength: number, queryTokens: Set<string>):
 
 const indexSession = (session: Session, allowRefused: boolean): IndexedSession => {
   const visible = getVisibleMessages(session)
-  const pairs = getContextRounds(visible, allowRefused).slice(-MAX_INDEXED_ROUNDS_PER_SESSION)
+  const pairs = getContextRounds(visible, allowRefused)
   const title = session.title.trim()
   const titleTokens = tokenize(title)
   const allTokens = new Set<string>(titleTokens)

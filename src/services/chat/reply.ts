@@ -370,26 +370,6 @@ export type RequestMessageSource =
   | { kind: 'currentQuestion' }
   | { kind: 'prefix' }
 
-const MAX_HISTORY_ROUNDS = 120
-const MAX_HISTORY_CHARS = 240_000
-
-const estimateParamChars = (param: MessageParam): number => {
-  if (typeof param.content === 'string') {
-    return param.content.length
-  }
-  let total = 0
-  for (const block of param.content) {
-    if (block.type === 'text') {
-      total += block.text.length
-    } else if (block.type === 'thinking') {
-      total += block.thinking.length
-    } else {
-      total += 256
-    }
-  }
-  return total
-}
-
 export const toRequestMessagesWithSources = (
   history: Message[],
   question: UserMessage,
@@ -414,12 +394,9 @@ export const toRequestMessagesWithSources = (
     assistantParam: Extract<MessageParam, { role: 'assistant' }>
     userSource: RequestMessageSource
     assistantSource: RequestMessageSource
-    chars: number
   }
-  const pickedReversed: BuiltRound[] = []
-  let totalChars = 0
-  for (let i = allRounds.length - 1; i >= 0 && pickedReversed.length < MAX_HISTORY_ROUNDS; i--) {
-    const [user, reply] = allRounds[i]
+  const builtRounds: BuiltRound[] = []
+  for (const [user, reply] of allRounds) {
     const builtUser = toUserParam(user, useLocalFileId, options?.skipFileIds)
     // 历史提问没有文字也没有可用内容块时，连同回答一起省略。
     if (!builtUser.param.content) {
@@ -434,12 +411,7 @@ export const toRequestMessagesWithSources = (
     if (assistantParam.content.length === 0) {
       continue
     }
-    const chars = estimateParamChars(builtUser.param) + estimateParamChars(assistantParam)
-    if (pickedReversed.length > 0 && totalChars + chars > MAX_HISTORY_CHARS) {
-      break
-    }
-    totalChars += chars
-    pickedReversed.push({
+    builtRounds.push({
       reminder: reply.latestReminder,
       userParam: builtUser.param,
       assistantParam,
@@ -449,11 +421,10 @@ export const toRequestMessagesWithSources = (
         userMessageId: user.id,
         assistantMessageId: reply.id,
       },
-      chars,
     })
   }
   const dropLeading = Math.max(0, options?.dropLeadingRounds ?? 0)
-  const selectedRounds = pickedReversed.reverse().slice(dropLeading)
+  const selectedRounds = dropLeading > 0 ? builtRounds.slice(dropLeading) : builtRounds
 
   const messages: MessageParam[] = []
   const sourceEntries: RequestMessageSource[] = []

@@ -551,7 +551,7 @@
   padding: 6px 14px;
   border-radius: 999px;
   border: 1px solid rgba(77, 107, 254, 0.28);
-  background: var(--dsw-alias-bg-layer-1, #fff);
+  background: var(--dsw-specific-menu);
   color: var(--dsw-alias-brand-text);
   font-size: 12px;
   line-height: 18px;
@@ -638,7 +638,7 @@ button.voiceExternalBanner {
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1, #fff);
+  background: var(--dsw-specific-menu);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
@@ -675,6 +675,6 @@ button.voiceExternalBanner {
 
 .effortPillActive {
   border-color: var(--dsw-alias-brand-primary);
-  background: var(--dsw-alias-brand-bg-soft, rgba(77, 107, 254, 0.12));
+  background: rgba(77, 107, 254, 0.14);
   color: var(--dsw-alias-brand-text);
 }

@@ -143,8 +143,25 @@ export const isTooManyImagesError = (error: unknown): boolean =>
     error.message
   )
 
+/** 识别服务端返回的“单条用户输入超过单次 token 上限”报错（裁剪历史也无法缩小当前单条输入） */
+export const parseUserInputTooLongError = (
+  message: string
+): { actual?: string; limit?: string } | null => {
+  const exact = /user input too long,\s*(\d+)\s*tokens\s*exceeds\s*max\s*(\d+)\s*tokens/i.exec(
+    message
+  )
+  if (exact) {
+    return { actual: exact[1], limit: exact[2] }
+  }
+  if (/user input too long/i.test(message)) {
+    return {}
+  }
+  return null
+}
+
 export const isContextOverflowError = (error: unknown): boolean =>
   error instanceof ApiError &&
+  !parseUserInputTooLongError(error.message) &&
   (error.status === 413 ||
     (error.status === 400 &&
       /maximum context length|context_length_exceeded|too many tokens|prompt is too long|exceed.*token|context window|input.*too long/i.test(

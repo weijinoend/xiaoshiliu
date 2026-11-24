@@ -455,4 +455,13 @@ export const zh = {
   crossChatLinkedClear: '清空已选',
   crossChatLinkedEmpty: '暂无可选会话',
   loadEarlierMessages: '显示更早消息（还有 {count} 条）',
+  replyUserInputTooLong:
+    '单条提问或文档解析后的内容共 {actual} tokens，超过了接口单次输入上限 {limit} tokens，请缩短或分段发送',
+  replyUserInputTooLongGeneric:
+    '单条提问或文档解析后的内容超过了接口单次输入上限，请缩短或分段发送',
+  timelineNavLabel: '对话时间线导航',
+  timelineTurns: '{count} 轮',
+  timelineTurnIndex: '{current} / {total}',
+  timelineNoAnswer: '暂无回复',
+  timelineAttachmentOnly: '[附件消息]',
 } as const

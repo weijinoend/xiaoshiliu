@@ -1051,7 +1051,7 @@
 
 .linkedSessionItemChecked {
   border-color: var(--dsw-alias-brand-primary);
-  background: var(--dsw-alias-brand-bg-soft, rgba(77, 107, 254, 0.1));
+  background: rgba(77, 107, 254, 0.12);
 }
 
 .linkedSessionTitle {

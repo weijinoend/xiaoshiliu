@@ -1,5 +1,5 @@
 import { isTranslationKey, translate } from '../../i18n/index.js'
-import { classifyStatus } from '../api/errors.js'
+import { classifyStatus, parseUserInputTooLongError } from '../api/errors.js'
 import type { AssistantMessage } from './types.js'
 
 export type Notice = {
@@ -43,8 +43,21 @@ export const describeReply = (
         return { text: translate('replyRateLimited') }
       case 'serverBusy':
         return { text: translate('completionServerBusyToast') }
-      default:
+      default: {
+        const inputTooLong = message ? parseUserInputTooLongError(message) : null
+        if (inputTooLong) {
+          return {
+            text:
+              inputTooLong.actual && inputTooLong.limit
+                ? translate('replyUserInputTooLong', {
+                    actual: inputTooLong.actual,
+                    limit: inputTooLong.limit,
+                  })
+                : translate('replyUserInputTooLongGeneric'),
+          }
+        }
         return message ? { text: message } : null
+      }
     }
   }
   const template = getTemplateText(reply)

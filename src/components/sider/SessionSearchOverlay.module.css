@@ -136,7 +136,7 @@
 
 .scopeChipActive {
   border-color: var(--dsw-alias-brand-primary);
-  background: var(--dsw-alias-brand-bg-soft, rgba(77, 107, 254, 0.12));
+  background: rgba(77, 107, 254, 0.14);
   color: var(--dsw-alias-brand-text);
   font-weight: 500;
 }
@@ -178,7 +178,7 @@
   margin-top: 2px;
   border-radius: 50%;
   border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-base));
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
 }
 

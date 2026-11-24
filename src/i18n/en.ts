@@ -482,4 +482,13 @@ export const en = {
   crossChatLinkedClear: 'Clear',
   crossChatLinkedEmpty: 'No chats available',
   loadEarlierMessages: 'Show earlier messages ({count} more)',
+  replyUserInputTooLong:
+    'Single message or parsed document ({actual} tokens) exceeds the per-turn limit ({limit} tokens). Please shorten or split your input.',
+  replyUserInputTooLongGeneric:
+    'Single message or parsed document exceeds the endpoint per-turn token limit. Please shorten or split your input.',
+  timelineNavLabel: 'Conversation timeline',
+  timelineTurns: '{count} turns',
+  timelineTurnIndex: '{current} of {total}',
+  timelineNoAnswer: 'No reply yet',
+  timelineAttachmentOnly: '[Attachment]',
 } satisfies Record<keyof typeof zh, string>
